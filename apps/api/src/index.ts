@@ -79,12 +79,15 @@ app.route('/api/ticker', tickerDetailRouter);
 
 // Serve static files in production
 if (isProduction) {
-  // Serve static assets
+  // Serve static assets (JS, CSS chunks)
   app.use('/assets/*', serveStatic({ root: './public' }));
   
-  // Serve other static files (favicon, etc.)
-  app.use('/favicon.ico', serveStatic({ path: './public/favicon.ico' }));
-  app.use('/vite.svg', serveStatic({ path: './public/vite.svg' }));
+  // Serve all static files from public folder (images, favicon, etc.)
+  app.use('/*.png', serveStatic({ root: './public' }));
+  app.use('/*.ico', serveStatic({ root: './public' }));
+  app.use('/*.svg', serveStatic({ root: './public' }));
+  app.use('/*.jpg', serveStatic({ root: './public' }));
+  app.use('/*.webp', serveStatic({ root: './public' }));
   
   // SPA fallback - serve index.html for all non-API routes
   app.get('*', serveStatic({ path: './public/index.html' }));
