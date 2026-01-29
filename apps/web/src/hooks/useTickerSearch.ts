@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+// In production, use relative URL (same origin). In dev, use localhost.
+const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:3001/api');
 
 export interface SearchResult {
   symbol: string;
