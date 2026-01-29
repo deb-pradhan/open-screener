@@ -79,18 +79,64 @@ app.route('/api/ticker', tickerDetailRouter);
 
 // Serve static files in production
 if (isProduction) {
-  // Serve static assets (JS, CSS chunks)
-  app.use('/assets/*', serveStatic({ root: './public' }));
+  const publicDir = './public';
   
-  // Serve all static files from public folder (images, favicon, etc.)
-  app.use('/*.png', serveStatic({ root: './public' }));
-  app.use('/*.ico', serveStatic({ root: './public' }));
-  app.use('/*.svg', serveStatic({ root: './public' }));
-  app.use('/*.jpg', serveStatic({ root: './public' }));
-  app.use('/*.webp', serveStatic({ root: './public' }));
+  // Log public directory contents on startup for debugging
+  try {
+    const { readdirSync } = await import('fs');
+    const files = readdirSync(publicDir);
+    console.log(`📁 Static files in ${publicDir}:`, files.slice(0, 10).join(', '), files.length > 10 ? `... and ${files.length - 10} more` : '');
+  } catch (e) {
+    console.warn(`⚠️ Could not read public directory: ${e}`);
+  }
+  
+  // Helper to serve static file with proper MIME type
+  const serveFile = async (filePath: string) => {
+    const file = Bun.file(filePath);
+    if (await file.exists()) {
+      return new Response(file);
+    }
+    return null;
+  };
+  
+  // Serve static assets (JS, CSS chunks)
+  app.use('/assets/*', serveStatic({ root: publicDir }));
+  
+  // Explicitly serve known static files
+  app.get('/logo.png', async (c) => {
+    const res = await serveFile(`${publicDir}/logo.png`);
+    return res || c.notFound();
+  });
+  app.get('/favopenscrnr.png', async (c) => {
+    const res = await serveFile(`${publicDir}/favopenscrnr.png`);
+    return res || c.notFound();
+  });
+  app.get('/image.png', async (c) => {
+    const res = await serveFile(`${publicDir}/image.png`);
+    return res || c.notFound();
+  });
+  app.get('/vite.svg', async (c) => {
+    const res = await serveFile(`${publicDir}/vite.svg`);
+    return res || c.notFound();
+  });
+  
+  // Fallback for other static files (.png, .ico, .svg, etc.)
+  app.get('/:filename{.+\\.(png|ico|svg|jpg|jpeg|webp|gif)$}', async (c) => {
+    const filename = c.req.param('filename');
+    const res = await serveFile(`${publicDir}/${filename}`);
+    return res || c.notFound();
+  });
   
   // SPA fallback - serve index.html for all non-API routes
-  app.get('*', serveStatic({ path: './public/index.html' }));
+  app.get('*', async (c) => {
+    const file = Bun.file(`${publicDir}/index.html`);
+    if (await file.exists()) {
+      return new Response(file, {
+        headers: { 'Content-Type': 'text/html' },
+      });
+    }
+    return c.notFound();
+  });
 }
 
 // Export for Bun server
