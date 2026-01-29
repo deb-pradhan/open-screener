@@ -22,7 +22,7 @@ export function TickerPageSkeleton() {
       
       {/* Tabs skeleton */}
       <div className="h-10 w-full border-b border-border-grid flex gap-4">
-        {['Overview', 'Financials', 'Chart', 'News', 'Dividends'].map((tab) => (
+        {['Overview', 'Financials', 'News', 'Dividends'].map((tab) => (
           <div key={tab} className="h-4 w-20 bg-surface-subtle rounded" />
         ))}
       </div>

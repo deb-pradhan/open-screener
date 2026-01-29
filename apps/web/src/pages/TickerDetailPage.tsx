@@ -6,7 +6,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { useTickerCore } from '@/hooks/useTickerData';
 import { TickerHeader } from '@/components/ticker/TickerHeader';
 import { TickerOverview } from '@/components/ticker/TickerOverview';
-import { TickerChart } from '@/components/ticker/TickerChart';
 import { TickerFinancials } from '@/components/ticker/TickerFinancials';
 import { TickerNews } from '@/components/ticker/TickerNews';
 import { TickerDividends } from '@/components/ticker/TickerDividends';
@@ -78,7 +77,6 @@ export default function TickerDetailPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="w-full justify-start overflow-x-auto flex-nowrap">
           <TabsTrigger value="overview" className="flex-shrink-0">Overview</TabsTrigger>
-          <TabsTrigger value="chart" className="flex-shrink-0">Chart</TabsTrigger>
           <TabsTrigger value="financials" className="flex-shrink-0">Financials</TabsTrigger>
           <TabsTrigger value="news" className="flex-shrink-0">News</TabsTrigger>
           <TabsTrigger value="dividends" className="flex-shrink-0">Dividends</TabsTrigger>
@@ -87,6 +85,7 @@ export default function TickerDetailPage() {
         <TabsContent value="overview" className="mt-4">
           <SectionErrorBoundary>
             <TickerOverview
+              symbol={symbol!}
               snapshot={snapshot}
               ratios={ratios}
               company={company}
@@ -97,14 +96,6 @@ export default function TickerDetailPage() {
               insiderTransactions={insiderTransactions}
               institutionalHolders={institutionalHolders}
             />
-          </SectionErrorBoundary>
-        </TabsContent>
-
-        <TabsContent value="chart" className="mt-4">
-          <SectionErrorBoundary>
-            <Suspense fallback={<ChartSkeleton />}>
-              <TickerChart symbol={symbol!} />
-            </Suspense>
           </SectionErrorBoundary>
         </TabsContent>
 
@@ -149,16 +140,6 @@ export default function TickerDetailPage() {
 }
 
 // Skeleton components for lazy-loaded sections
-function ChartSkeleton() {
-  return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="h-[400px] bg-surface-subtle animate-pulse rounded" />
-      </CardContent>
-    </Card>
-  );
-}
-
 function FinancialsSkeleton() {
   return (
     <Card>

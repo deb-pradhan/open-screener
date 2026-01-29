@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { formatNumber, formatPercent, formatPrice } from '@/lib/utils';
+import { TickerChart } from './TickerChart';
 import { 
   ChevronRight, 
   TrendingUp, 
@@ -28,6 +29,7 @@ import type {
 } from '@screener/shared';
 
 interface TickerOverviewProps {
+  symbol: string;
   snapshot: LatestSnapshotData | null;
   ratios: FinancialRatios | null;
   company: CompanyDetails | null;
@@ -40,6 +42,7 @@ interface TickerOverviewProps {
 }
 
 export function TickerOverview({ 
+  symbol,
   snapshot, 
   ratios, 
   company,
@@ -58,6 +61,9 @@ export function TickerOverview({
 
   return (
     <div className="space-y-4">
+      {/* Price Chart */}
+      <TickerChart symbol={symbol} />
+
       {/* Trading Information */}
       <Card>
         <CardHeader className="pb-2">
