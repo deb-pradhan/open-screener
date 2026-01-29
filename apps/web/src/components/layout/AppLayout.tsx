@@ -1,29 +1,31 @@
-import { useState } from 'react';
-import { ScreenerView } from '@/components/screener/ScreenerView';
-import { FilterBuilder } from '@/components/screener/FilterBuilder';
-import { PresetExplorer } from '@/components/screener/PresetExplorer';
+import { ReactNode } from 'react';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { BarChart3, Home, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-type ViewMode = 'explore' | 'screener' | 'custom';
+interface AppLayoutProps {
+  children: ReactNode;
+}
 
-function App() {
-  const [viewMode, setViewMode] = useState<ViewMode>('explore');
-  const [activePreset, setActivePreset] = useState<string>('highVolume');
+export default function AppLayout({ children }: AppLayoutProps) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isHome = location.pathname === '/';
+  
+  // Get active preset from URL if on screener page
+  const presetMatch = location.pathname.match(/\/screener\/(.+)/);
+  const activePreset = presetMatch ? presetMatch[1] : 'highVolume';
+  
   const { isConnected, lastUpdate } = useWebSocket(activePreset);
 
-  const handlePresetSelect = (presetId: string) => {
-    setActivePreset(presetId);
-    setViewMode('screener');
-  };
-
-  const handleCreateCustom = () => {
-    setViewMode('custom');
-  };
-
-  const handleBackToExplore = () => {
-    setViewMode('explore');
+  const handleBack = () => {
+    // If coming from a deep page, go back; otherwise go home
+    if (window.history.length > 2) {
+      navigate(-1);
+    } else {
+      navigate('/');
+    }
   };
 
   return (
@@ -34,19 +36,19 @@ function App() {
           <div className="flex items-center justify-between gap-2">
             {/* Left: Back button + Logo */}
             <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-              {viewMode !== 'explore' && (
+              {!isHome && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={handleBackToExplore}
+                  onClick={handleBack}
                   className="flex-shrink-0 gap-1 sm:gap-2 px-2 sm:px-3"
                 >
                   <ArrowLeft className="h-4 w-4" strokeWidth={1.5} />
                   <span className="hidden sm:inline">Back</span>
                 </Button>
               )}
-              <button 
-                onClick={handleBackToExplore}
+              <Link 
+                to="/"
                 className="flex items-center gap-2 sm:gap-4 hover:opacity-80 transition-opacity min-w-0"
               >
                 <div className="w-8 h-8 sm:w-10 sm:h-10 bg-accent-main flex items-center justify-center flex-shrink-0">
@@ -58,21 +60,22 @@ function App() {
                     REAL-TIME TECHNICAL ANALYSIS
                   </p>
                 </div>
-              </button>
+              </Link>
             </div>
             
             {/* Right: Status indicators */}
             <div className="flex items-center gap-2 sm:gap-6 flex-shrink-0">
-              {viewMode === 'explore' && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleBackToExplore}
-                  className="hidden sm:flex gap-2 text-ink-secondary"
-                >
-                  <Home className="h-4 w-4" strokeWidth={1.5} />
-                  Screens
-                </Button>
+              {isHome && (
+                <Link to="/">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="hidden sm:flex gap-2 text-ink-secondary"
+                  >
+                    <Home className="h-4 w-4" strokeWidth={1.5} />
+                    Screens
+                  </Button>
+                </Link>
               )}
               <div className="flex items-center gap-1.5 sm:gap-2">
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
@@ -94,23 +97,7 @@ function App() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 sm:px-6 py-4 sm:py-6 flex-1">
-        {viewMode === 'explore' && (
-          <PresetExplorer
-            onPresetSelect={handlePresetSelect}
-            onCreateCustom={handleCreateCustom}
-          />
-        )}
-        
-        {viewMode === 'screener' && (
-          <ScreenerView
-            activePreset={activePreset}
-            onPresetChange={setActivePreset}
-          />
-        )}
-        
-        {viewMode === 'custom' && (
-          <FilterBuilder />
-        )}
+        {children}
       </main>
 
       {/* Footer */}
@@ -127,5 +114,3 @@ function App() {
     </div>
   );
 }
-
-export default App;

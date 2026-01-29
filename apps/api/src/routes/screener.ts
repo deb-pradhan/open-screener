@@ -9,11 +9,16 @@ export const screenerRouter = new Hono();
 
 const screenerService = new ScreenerService();
 
-// Filter condition schema
+// Filter condition schema - includes fundamental fields
 const filterConditionSchema = z.object({
   field: z.enum([
-    'price', 'volume', 'changePercent', 'rsi14',
-    'sma20', 'sma50', 'sma200', 'ema12', 'ema26'
+    // Price & Volume
+    'price', 'volume', 'changePercent',
+    // Technical Indicators
+    'rsi14', 'sma20', 'sma50', 'sma200', 'ema12', 'ema26',
+    // Fundamental Fields
+    'marketCap', 'peRatio', 'pbRatio', 'dividendYield',
+    'grossMargin', 'debtToEquity', 'revenueGrowthYoy', 'epsGrowthYoy'
   ]),
   operator: z.enum(['gt', 'gte', 'lt', 'lte', 'eq', 'neq', 'between']),
   value: z.union([z.number(), z.tuple([z.number(), z.number()])]),

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, real, integer, jsonb, uuid, date, serial, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, boolean, real, integer, jsonb, uuid, date, serial, index, uniqueIndex, primaryKey } from 'drizzle-orm/pg-core';
 
 // ============================================
 // Tickers - Stock metadata
@@ -84,7 +84,7 @@ export const latestSnapshot = pgTable('latest_snapshot', {
   volume: real('volume').notNull(),
   vwap: real('vwap'),
   changePercent: real('change_percent'),
-  // Indicators
+  // Technical Indicators
   rsi14: real('rsi14'),
   sma20: real('sma20'),
   sma50: real('sma50'),
@@ -94,6 +94,18 @@ export const latestSnapshot = pgTable('latest_snapshot', {
   macdValue: real('macd_value'),
   macdSignal: real('macd_signal'),
   macdHistogram: real('macd_histogram'),
+  // Fundamental data (denormalized for screener queries)
+  marketCap: real('market_cap'),
+  peRatio: real('pe_ratio'),
+  pbRatio: real('pb_ratio'),
+  dividendYield: real('dividend_yield'),
+  grossMargin: real('gross_margin'),
+  revenueGrowthYoy: real('revenue_growth_yoy'),
+  epsGrowthYoy: real('eps_growth_yoy'),
+  debtToEquity: real('debt_to_equity'),
+  // Data freshness tracking
+  financialsLastSync: timestamp('financials_last_sync'),
+  ratiosLastSync: timestamp('ratios_last_sync'),
   // Metadata
   dataDate: date('data_date').notNull(),
   updatedAt: timestamp('updated_at').defaultNow(),
@@ -104,6 +116,11 @@ export const latestSnapshot = pgTable('latest_snapshot', {
   rsiIdx: index('latest_snapshot_rsi_idx').on(table.rsi14),
   changeIdx: index('latest_snapshot_change_idx').on(table.changePercent),
   sma200Idx: index('latest_snapshot_sma200_idx').on(table.sma200),
+  // Fundamental screener indexes
+  marketCapIdx: index('latest_snapshot_mcap_idx').on(table.marketCap),
+  peRatioIdx: index('latest_snapshot_pe_idx').on(table.peRatio),
+  divYieldIdx: index('latest_snapshot_div_yield_idx').on(table.dividendYield),
+  grossMarginIdx: index('latest_snapshot_gross_margin_idx').on(table.grossMargin),
 }));
 
 // ============================================
@@ -140,6 +157,201 @@ export const filterPresets = pgTable('filter_presets', {
 });
 
 // ============================================
+// Company Details - Extended ticker info
+// ============================================
+export const companyDetails = pgTable('company_details', {
+  symbol: text('symbol').primaryKey().references(() => tickers.symbol, { onDelete: 'cascade' }),
+  description: text('description'),
+  homepageUrl: text('homepage_url'),
+  phoneNumber: text('phone_number'),
+  address: jsonb('address'), // { address1, city, state, postalCode, country }
+  sicCode: text('sic_code'),
+  sicDescription: text('sic_description'),
+  totalEmployees: integer('total_employees'),
+  listDate: date('list_date'),
+  delistDate: date('delist_date'),
+  marketCap: real('market_cap'),
+  sharesOutstanding: real('shares_outstanding'),
+  lastSyncedAt: timestamp('last_synced_at'),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// ============================================
+// Financial Statements - JSONB + extracted fields
+// Stores income statements, balance sheets, cash flow statements
+// ============================================
+export const financialStatements = pgTable('financial_statements', {
+  id: serial('id').primaryKey(),
+  symbol: text('symbol').notNull().references(() => tickers.symbol, { onDelete: 'cascade' }),
+  statementType: text('statement_type').notNull(), // 'income' | 'balance' | 'cashflow'
+  timeframe: text('timeframe').notNull(), // 'quarterly' | 'annual' | 'ttm'
+  fiscalYear: integer('fiscal_year').notNull(),
+  fiscalQuarter: integer('fiscal_quarter'), // null for annual
+  periodEnd: date('period_end').notNull(),
+  filingDate: date('filing_date'),
+  acceptedDate: timestamp('accepted_date'),
+  // Raw JSONB for all fields (forward-compatible with Polygon schema changes)
+  rawData: jsonb('raw_data').notNull(),
+  // Extracted fields for common queries
+  revenue: real('revenue'),
+  netIncome: real('net_income'),
+  eps: real('eps'),
+  totalAssets: real('total_assets'),
+  totalLiabilities: real('total_liabilities'),
+  operatingCashFlow: real('operating_cash_flow'),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  // Composite unique constraint - one statement per symbol/type/period
+  uniqueStatement: uniqueIndex('fin_stmt_unique_idx')
+    .on(table.symbol, table.statementType, table.timeframe, table.periodEnd),
+  symbolIdx: index('fin_stmt_symbol_idx').on(table.symbol),
+  periodIdx: index('fin_stmt_period_idx').on(table.periodEnd),
+  typeIdx: index('fin_stmt_type_idx').on(table.statementType),
+}));
+
+// ============================================
+// Financial Ratios - Latest TTM-based ratios
+// ============================================
+export const financialRatios = pgTable('financial_ratios', {
+  symbol: text('symbol').primaryKey().references(() => tickers.symbol, { onDelete: 'cascade' }),
+  // Valuation
+  peRatio: real('pe_ratio'),
+  pbRatio: real('pb_ratio'),
+  psRatio: real('ps_ratio'),
+  evToEbitda: real('ev_to_ebitda'),
+  pegRatio: real('peg_ratio'),
+  // Profitability
+  grossMargin: real('gross_margin'),
+  operatingMargin: real('operating_margin'),
+  netMargin: real('net_margin'),
+  roe: real('roe'),
+  roa: real('roa'),
+  roic: real('roic'),
+  // Liquidity
+  currentRatio: real('current_ratio'),
+  quickRatio: real('quick_ratio'),
+  // Leverage
+  debtToEquity: real('debt_to_equity'),
+  interestCoverage: real('interest_coverage'),
+  // Metadata
+  lastSyncedAt: timestamp('last_synced_at'),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  peIdx: index('ratios_pe_idx').on(table.peRatio),
+  marginIdx: index('ratios_margin_idx').on(table.grossMargin),
+}));
+
+// ============================================
+// Dividends
+// ============================================
+export const dividends = pgTable('dividends', {
+  id: serial('id').primaryKey(),
+  symbol: text('symbol').notNull().references(() => tickers.symbol, { onDelete: 'cascade' }),
+  exDividendDate: date('ex_dividend_date').notNull(),
+  payDate: date('pay_date'),
+  recordDate: date('record_date'),
+  declarationDate: date('declaration_date'),
+  amount: real('amount').notNull(),
+  frequency: integer('frequency'), // 1=annual, 2=semi, 4=quarterly, 12=monthly
+  dividendType: text('dividend_type'), // 'CD' (cash), 'SC' (special cash), etc.
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  symbolDateIdx: uniqueIndex('div_symbol_date_idx').on(table.symbol, table.exDividendDate),
+  exDateIdx: index('div_ex_date_idx').on(table.exDividendDate),
+  symbolIdx: index('div_symbol_idx').on(table.symbol),
+}));
+
+// ============================================
+// Stock Splits
+// ============================================
+export const stockSplits = pgTable('stock_splits', {
+  id: serial('id').primaryKey(),
+  symbol: text('symbol').notNull().references(() => tickers.symbol, { onDelete: 'cascade' }),
+  executionDate: date('execution_date').notNull(),
+  splitFrom: real('split_from').notNull(), // e.g., 1
+  splitTo: real('split_to').notNull(),     // e.g., 4 (for 4:1 split)
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  symbolDateIdx: uniqueIndex('split_symbol_date_idx').on(table.symbol, table.executionDate),
+  symbolIdx: index('split_symbol_idx').on(table.symbol),
+}));
+
+// ============================================
+// News Articles
+// ============================================
+export const newsArticles = pgTable('news_articles', {
+  id: text('id').primaryKey(), // Polygon article ID
+  publishedAt: timestamp('published_at').notNull(),
+  title: text('title').notNull(),
+  author: text('author'),
+  articleUrl: text('article_url'),
+  imageUrl: text('image_url'),
+  description: text('description'),
+  keywords: jsonb('keywords'), // string[]
+  publisher: jsonb('publisher'), // { name, homepage_url, logo_url }
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  publishedIdx: index('news_published_idx').on(table.publishedAt),
+}));
+
+// ============================================
+// News Tickers - Junction table (many-to-many)
+// One article can mention multiple tickers
+// ============================================
+export const newsTickers = pgTable('news_tickers', {
+  articleId: text('article_id').notNull().references(() => newsArticles.id, { onDelete: 'cascade' }),
+  symbol: text('symbol').notNull().references(() => tickers.symbol, { onDelete: 'cascade' }),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.articleId, table.symbol] }),
+  symbolIdx: index('news_tickers_symbol_idx').on(table.symbol),
+  articleIdx: index('news_tickers_article_idx').on(table.articleId),
+}));
+
+// ============================================
+// Sync Status - Per-symbol sync tracking for resumable operations
+// ============================================
+export const syncStatus = pgTable('sync_status', {
+  id: serial('id').primaryKey(),
+  symbol: text('symbol').notNull(),
+  dataType: text('data_type').notNull(), // 'financials' | 'dividends' | 'splits' | 'details' | 'ratios' | 'news'
+  lastSyncedAt: timestamp('last_synced_at'),
+  lastSyncStatus: text('last_sync_status'), // 'success' | 'failed' | 'partial'
+  errorMessage: text('error_message'),
+  retryCount: integer('retry_count').default(0),
+  nextRetryAt: timestamp('next_retry_at'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  symbolTypeIdx: uniqueIndex('sync_status_symbol_type_idx').on(table.symbol, table.dataType),
+  retryIdx: index('sync_status_retry_idx').on(table.nextRetryAt),
+  statusIdx: index('sync_status_status_idx').on(table.lastSyncStatus),
+}));
+
+// ============================================
+// Sync Locks - Distributed locking for sync operations
+// Prevents concurrent syncs across multiple instances
+// ============================================
+export const syncLocks = pgTable('sync_locks', {
+  lockName: text('lock_name').primaryKey(),
+  lockedBy: text('locked_by').notNull(), // instance ID
+  lockedAt: timestamp('locked_at').notNull(),
+  expiresAt: timestamp('expires_at').notNull(),
+}, (table) => ({
+  expiresIdx: index('sync_locks_expires_idx').on(table.expiresAt),
+}));
+
+// ============================================
+// Sync Checkpoints - For resumable operations
+// ============================================
+export const syncCheckpoints = pgTable('sync_checkpoints', {
+  syncType: text('sync_type').primaryKey(), // 'financials' | 'dividends' | etc.
+  lastSymbol: text('last_symbol').notNull(),
+  processedCount: integer('processed_count').default(0),
+  totalCount: integer('total_count'),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// ============================================
 // Type exports for TypeScript
 // ============================================
 export type NewTicker = typeof tickers.$inferInsert;
@@ -159,3 +371,33 @@ export type SyncLog = typeof syncLog.$inferSelect;
 
 export type NewFilterPreset = typeof filterPresets.$inferInsert;
 export type FilterPreset = typeof filterPresets.$inferSelect;
+
+export type NewCompanyDetails = typeof companyDetails.$inferInsert;
+export type CompanyDetails = typeof companyDetails.$inferSelect;
+
+export type NewFinancialStatement = typeof financialStatements.$inferInsert;
+export type FinancialStatement = typeof financialStatements.$inferSelect;
+
+export type NewFinancialRatios = typeof financialRatios.$inferInsert;
+export type FinancialRatios = typeof financialRatios.$inferSelect;
+
+export type NewDividend = typeof dividends.$inferInsert;
+export type Dividend = typeof dividends.$inferSelect;
+
+export type NewStockSplit = typeof stockSplits.$inferInsert;
+export type StockSplit = typeof stockSplits.$inferSelect;
+
+export type NewNewsArticle = typeof newsArticles.$inferInsert;
+export type NewsArticle = typeof newsArticles.$inferSelect;
+
+export type NewNewsTicker = typeof newsTickers.$inferInsert;
+export type NewsTicker = typeof newsTickers.$inferSelect;
+
+export type NewSyncStatus = typeof syncStatus.$inferInsert;
+export type SyncStatusRecord = typeof syncStatus.$inferSelect;
+
+export type NewSyncLock = typeof syncLocks.$inferInsert;
+export type SyncLock = typeof syncLocks.$inferSelect;
+
+export type NewSyncCheckpoint = typeof syncCheckpoints.$inferInsert;
+export type SyncCheckpoint = typeof syncCheckpoints.$inferSelect;

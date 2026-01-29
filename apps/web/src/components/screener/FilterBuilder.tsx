@@ -15,16 +15,27 @@ import { useScreenerStore } from '@/stores/screenerStore';
 import { Plus, X, Play, Trash2, ChevronRight, Settings2 } from 'lucide-react';
 import type { FilterCondition, FilterOperator, StockIndicators } from '@screener/shared';
 
-const FIELDS: Array<{ value: keyof StockIndicators; label: string }> = [
-  { value: 'price', label: 'Price' },
-  { value: 'volume', label: 'Volume' },
-  { value: 'changePercent', label: 'Change %' },
-  { value: 'rsi14', label: 'RSI (14)' },
-  { value: 'sma20', label: 'SMA 20' },
-  { value: 'sma50', label: 'SMA 50' },
-  { value: 'sma200', label: 'SMA 200' },
-  { value: 'ema12', label: 'EMA 12' },
-  { value: 'ema26', label: 'EMA 26' },
+const FIELDS: Array<{ value: keyof StockIndicators; label: string; category: string }> = [
+  // Price & Volume
+  { value: 'price', label: 'Price', category: 'Price & Volume' },
+  { value: 'volume', label: 'Volume', category: 'Price & Volume' },
+  { value: 'changePercent', label: 'Change %', category: 'Price & Volume' },
+  // Technical Indicators
+  { value: 'rsi14', label: 'RSI (14)', category: 'Technical' },
+  { value: 'sma20', label: 'SMA 20', category: 'Technical' },
+  { value: 'sma50', label: 'SMA 50', category: 'Technical' },
+  { value: 'sma200', label: 'SMA 200', category: 'Technical' },
+  { value: 'ema12', label: 'EMA 12', category: 'Technical' },
+  { value: 'ema26', label: 'EMA 26', category: 'Technical' },
+  // Fundamentals
+  { value: 'marketCap', label: 'Market Cap', category: 'Fundamentals' },
+  { value: 'peRatio', label: 'P/E Ratio', category: 'Fundamentals' },
+  { value: 'pbRatio', label: 'P/B Ratio', category: 'Fundamentals' },
+  { value: 'dividendYield', label: 'Dividend Yield', category: 'Fundamentals' },
+  { value: 'grossMargin', label: 'Gross Margin %', category: 'Fundamentals' },
+  { value: 'debtToEquity', label: 'Debt/Equity', category: 'Fundamentals' },
+  { value: 'revenueGrowthYoy', label: 'Revenue Growth YoY', category: 'Fundamentals' },
+  { value: 'epsGrowthYoy', label: 'EPS Growth YoY', category: 'Fundamentals' },
 ];
 
 const OPERATORS: Array<{ value: FilterOperator; label: string; symbol: string }> = [

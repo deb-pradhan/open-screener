@@ -1,21 +1,28 @@
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ChevronRight, Plus, TrendingUp, Activity, BarChart3, Zap } from 'lucide-react';
+import { ChevronRight, Plus, TrendingUp, Activity, BarChart3, Zap, DollarSign } from 'lucide-react';
 import { PRESET_CATEGORIES, getPresetsByCategory, type PresetCategory } from '@screener/shared';
-
-interface PresetExplorerProps {
-  onPresetSelect: (presetId: string) => void;
-  onCreateCustom: () => void;
-}
 
 const categoryIcons: Record<PresetCategory, React.ReactNode> = {
   technical: <Activity className="h-4 w-4" strokeWidth={1.5} />,
   moving_averages: <TrendingUp className="h-4 w-4" strokeWidth={1.5} />,
   price_volume: <BarChart3 className="h-4 w-4" strokeWidth={1.5} />,
   momentum: <Zap className="h-4 w-4" strokeWidth={1.5} />,
+  fundamentals: <DollarSign className="h-4 w-4" strokeWidth={1.5} />,
 };
 
-export function PresetExplorer({ onPresetSelect, onCreateCustom }: PresetExplorerProps) {
+export function PresetExplorer() {
+  const navigate = useNavigate();
+
+  const handlePresetSelect = (presetId: string) => {
+    navigate(`/screener/${presetId}`);
+  };
+
+  const handleCreateCustom = () => {
+    navigate('/custom');
+  };
+
   return (
     <div className="space-y-0">
       {/* Page Header */}
@@ -28,7 +35,7 @@ export function PresetExplorer({ onPresetSelect, onCreateCustom }: PresetExplore
                 Select a preset screen or create your own custom filter
               </p>
             </div>
-            <Button onClick={onCreateCustom} className="gap-2 w-full sm:w-auto">
+            <Button onClick={handleCreateCustom} className="gap-2 w-full sm:w-auto">
               <Plus className="h-4 w-4" strokeWidth={1.5} />
               Create Custom Screen
             </Button>
@@ -65,7 +72,7 @@ export function PresetExplorer({ onPresetSelect, onCreateCustom }: PresetExplore
                   {presets.map((preset) => (
                     <button
                       key={preset.id}
-                      onClick={() => onPresetSelect(preset.id)}
+                      onClick={() => handlePresetSelect(preset.id)}
                       className="group text-left p-3 sm:p-4 bg-surface-subtle border border-border-element hover:border-accent-main hover:bg-accent-subtle/30 transition-all active:scale-[0.98]"
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -122,18 +129,19 @@ export function PresetExplorer({ onPresetSelect, onCreateCustom }: PresetExplore
         </CardHeader>
         <CardContent className="px-4 sm:px-6">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
-            {['highVolume', 'topGainers', 'oversold', 'goldenCross', 'bullishMomentum'].map((presetId) => {
+            {['highVolume', 'topGainers', 'oversold', 'goldenCross', 'valueStocks'].map((presetId) => {
               const preset = getPresetsByCategory('technical').find(p => p.id === presetId) ||
                            getPresetsByCategory('moving_averages').find(p => p.id === presetId) ||
                            getPresetsByCategory('price_volume').find(p => p.id === presetId) ||
-                           getPresetsByCategory('momentum').find(p => p.id === presetId);
+                           getPresetsByCategory('momentum').find(p => p.id === presetId) ||
+                           getPresetsByCategory('fundamentals').find(p => p.id === presetId);
               
               if (!preset) return null;
               
               return (
                 <button
                   key={presetId}
-                  onClick={() => onPresetSelect(presetId)}
+                  onClick={() => handlePresetSelect(presetId)}
                   className="group p-3 sm:p-4 bg-surface-subtle border border-border-element hover:border-accent-main hover:bg-accent-subtle/30 transition-all text-left active:scale-[0.98]"
                 >
                   <div className="flex items-center gap-1.5 sm:gap-2">

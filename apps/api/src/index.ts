@@ -9,6 +9,7 @@ import { tickersRouter } from './routes/tickers';
 import { screenerRouter } from './routes/screener';
 import { indicatorsRouter } from './routes/indicators';
 import { syncRouter } from './routes/sync';
+import { tickerDetailRouter } from './routes/ticker-detail';
 import { createWSHandler, type WSData } from './routes/websocket';
 import { scheduler } from './services/scheduler';
 import { startupService } from './services/startup';
@@ -28,7 +29,7 @@ app.use('*', cors({
   credentials: true,
 }));
 
-// Health check
+// Health check (basic)
 app.get('/health', (c) => {
   return c.json({ 
     status: 'ok', 
@@ -38,11 +39,43 @@ app.get('/health', (c) => {
   });
 });
 
+// Detailed health check (for monitoring)
+app.get('/api/health', async (c) => {
+  try {
+    const { dataSyncService } = await import('./services/data-sync');
+    const { MassiveClient } = await import('./clients/massive');
+    
+    const lastSyncTime = hasDatabase ? await dataSyncService.getLastSyncTime() : null;
+    const snapshotCount = hasDatabase ? await dataSyncService.getSnapshotCount() : 0;
+    const massiveClient = new MassiveClient();
+    
+    const isHealthy = !hasDatabase || (lastSyncTime && 
+      (Date.now() - lastSyncTime.getTime()) < 2 * 60 * 60 * 1000); // 2h threshold
+    
+    return c.json({
+      status: isHealthy ? 'healthy' : 'degraded',
+      timestamp: Date.now(),
+      environment: process.env.NODE_ENV || 'development',
+      database: hasDatabase ? 'connected' : 'not configured',
+      lastSync: lastSyncTime?.toISOString() || null,
+      snapshotCount,
+      circuitBreaker: massiveClient.getCircuitState(),
+    }, isHealthy ? 200 : 503);
+  } catch (error) {
+    return c.json({
+      status: 'error',
+      timestamp: Date.now(),
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }, 500);
+  }
+});
+
 // API routes
 app.route('/api/tickers', tickersRouter);
 app.route('/api/screener', screenerRouter);
 app.route('/api/indicators', indicatorsRouter);
 app.route('/api/sync', syncRouter);
+app.route('/api/ticker', tickerDetailRouter);
 
 // Serve static files in production
 if (isProduction) {

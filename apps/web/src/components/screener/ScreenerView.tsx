@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   useReactTable,
   getCoreRowModel,
@@ -7,7 +8,6 @@ import {
   type ColumnDef,
   type SortingState,
 } from '@tanstack/react-table';
-import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -21,17 +21,18 @@ import { Badge } from '@/components/ui/badge';
 import { usePresetScreener, usePresets } from '@/hooks/useScreener';
 import { formatNumber, formatPrice, formatPercent } from '@/lib/utils';
 import { ArrowUpDown, ArrowUp, ArrowDown, RefreshCw, ChevronRight } from 'lucide-react';
+import { prefetchTickerData } from '@/main';
 import type { StockIndicators } from '@screener/shared';
 
-interface ScreenerViewProps {
-  activePreset: string;
-  onPresetChange: (preset: string) => void;
-}
-
-export function ScreenerView({ activePreset, onPresetChange }: ScreenerViewProps) {
+export function ScreenerView() {
+  const { presetId } = useParams<{ presetId: string }>();
+  const navigate = useNavigate();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [page, setPage] = useState(1);
+  const [focusedRow, setFocusedRow] = useState<number | null>(null);
   const pageSize = 50;
+
+  const activePreset = presetId || 'highVolume';
 
   const { data: presets } = usePresets();
   const { data: results, isLoading, error, refetch } = usePresetScreener(
@@ -39,6 +40,33 @@ export function ScreenerView({ activePreset, onPresetChange }: ScreenerViewProps
     page,
     pageSize
   );
+
+  const handlePresetChange = (newPreset: string) => {
+    navigate(`/screener/${newPreset}`);
+    setPage(1);
+  };
+
+  const handleRowClick = (symbol: string) => {
+    navigate(`/ticker/${symbol}`);
+  };
+
+  const handleRowHover = (symbol: string) => {
+    prefetchTickerData(symbol);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent, stocks: StockIndicators[]) => {
+    if (e.key === 'Enter' && focusedRow !== null && stocks[focusedRow]) {
+      navigate(`/ticker/${stocks[focusedRow].symbol}`);
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setFocusedRow(prev => Math.min((prev ?? -1) + 1, stocks.length - 1));
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setFocusedRow(prev => Math.max((prev ?? 1) - 1, 0));
+    }
+  };
 
   const columns = useMemo<ColumnDef<StockIndicators>[]>(
     () => [
@@ -245,7 +273,7 @@ export function ScreenerView({ activePreset, onPresetChange }: ScreenerViewProps
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
               <div className="flex items-center gap-2 sm:gap-3">
                 <span className="text-[10px] sm:text-label text-ink-secondary flex-shrink-0">PRESET</span>
-                <Select value={activePreset} onValueChange={onPresetChange}>
+                <Select value={activePreset} onValueChange={handlePresetChange}>
                   <SelectTrigger className="w-full sm:w-[200px]">
                     <SelectValue placeholder="Select preset" />
                   </SelectTrigger>
@@ -287,6 +315,7 @@ export function ScreenerView({ activePreset, onPresetChange }: ScreenerViewProps
             <ChevronRight className="h-4 w-4 text-accent-main" strokeWidth={1.5} />
             Screener Results
           </CardTitle>
+          <p className="text-[10px] text-ink-tertiary">Click a row to view details</p>
         </CardHeader>
         <CardContent className="p-0">
           {error ? (
@@ -306,7 +335,11 @@ export function ScreenerView({ activePreset, onPresetChange }: ScreenerViewProps
             </div>
           ) : (
             <>
-              <div className="overflow-x-auto">
+              <div 
+                className="overflow-x-auto"
+                onKeyDown={(e) => handleKeyDown(e, results.stocks)}
+                tabIndex={0}
+              >
                 <table className="w-full min-w-[600px] sm:min-w-full">
                   <thead>
                     {table.getHeaderGroups().map((headerGroup) => (
@@ -334,10 +367,16 @@ export function ScreenerView({ activePreset, onPresetChange }: ScreenerViewProps
                     ))}
                   </thead>
                   <tbody>
-                    {table.getRowModel().rows.map((row) => (
+                    {table.getRowModel().rows.map((row, rowIdx) => (
                       <tr
                         key={row.id}
-                        className="border-b border-border-element hover:bg-accent-subtle/50 transition-colors"
+                        onClick={() => handleRowClick(row.original.symbol)}
+                        onMouseEnter={() => handleRowHover(row.original.symbol)}
+                        tabIndex={0}
+                        onKeyDown={(e) => e.key === 'Enter' && handleRowClick(row.original.symbol)}
+                        className={`border-b border-border-element cursor-pointer hover:bg-surface-subtle transition-colors ${
+                          focusedRow === rowIdx ? 'bg-accent-subtle/50' : ''
+                        }`}
                       >
                         {row.getVisibleCells().map((cell, idx) => {
                           // Hide SMA columns on mobile (indices 5, 6, 7)

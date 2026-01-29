@@ -86,6 +86,7 @@ export class ScreenerService {
       price: row.price,
       volume: row.volume,
       changePercent: row.changePercent || 0,
+      // Technical Indicators
       rsi14: row.rsi14 || undefined,
       sma20: row.sma20 || undefined,
       sma50: row.sma50 || undefined,
@@ -97,6 +98,18 @@ export class ScreenerService {
         signal: row.macdSignal || 0,
         histogram: row.macdHistogram || 0,
       } : undefined,
+      // Fundamental Fields
+      marketCap: row.marketCap || undefined,
+      peRatio: row.peRatio || undefined,
+      pbRatio: row.pbRatio || undefined,
+      dividendYield: row.dividendYield || undefined,
+      grossMargin: row.grossMargin || undefined,
+      debtToEquity: row.debtToEquity || undefined,
+      revenueGrowthYoy: row.revenueGrowthYoy || undefined,
+      epsGrowthYoy: row.epsGrowthYoy || undefined,
+      // Metadata
+      financialsLastSync: row.financialsLastSync?.toISOString(),
+      ratiosLastSync: row.ratiosLastSync?.toISOString(),
       updatedAt: row.updatedAt?.getTime() || Date.now(),
     }));
     
@@ -134,15 +147,26 @@ export class ScreenerService {
 
   private getDBColumn(field: string) {
     const columnMap: Record<string, any> = {
+      // Price & Volume
       price: latestSnapshot.price,
       volume: latestSnapshot.volume,
       changePercent: latestSnapshot.changePercent,
+      // Technical Indicators
       rsi14: latestSnapshot.rsi14,
       sma20: latestSnapshot.sma20,
       sma50: latestSnapshot.sma50,
       sma200: latestSnapshot.sma200,
       ema12: latestSnapshot.ema12,
       ema26: latestSnapshot.ema26,
+      // Fundamental Fields
+      marketCap: latestSnapshot.marketCap,
+      peRatio: latestSnapshot.peRatio,
+      pbRatio: latestSnapshot.pbRatio,
+      dividendYield: latestSnapshot.dividendYield,
+      grossMargin: latestSnapshot.grossMargin,
+      debtToEquity: latestSnapshot.debtToEquity,
+      revenueGrowthYoy: latestSnapshot.revenueGrowthYoy,
+      epsGrowthYoy: latestSnapshot.epsGrowthYoy,
     };
     return columnMap[field];
   }
@@ -335,11 +359,14 @@ export class ScreenerService {
           if (stock.rsi14 !== undefined && stock.sma200 !== undefined) {
             // Already enriched, just fetch details if needed
             if (!stock.logo && !stock.name) {
-              const details = this.tickerDetailsCache.get(stock.symbol) ||
-                await this.massiveClient.getTickerDetails(stock.symbol).catch(() => null);
-              if (details) {
-                const logo = 'branding' in details ? details.branding?.logo_url : details.logo;
-                const name = details.name;
+              const cachedDetails = this.tickerDetailsCache.get(stock.symbol);
+              if (cachedDetails) {
+                return { ...stock, logo: cachedDetails.logo, name: cachedDetails.name || stock.symbol };
+              }
+              const apiDetails = await this.massiveClient.getTickerDetails(stock.symbol).catch(() => null);
+              if (apiDetails) {
+                const logo = apiDetails.branding?.logo_url;
+                const name = apiDetails.name;
                 this.tickerDetailsCache.set(stock.symbol, { logo, name });
                 return { ...stock, logo, name: name || stock.symbol };
               }
