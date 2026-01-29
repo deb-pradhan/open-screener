@@ -1,9 +1,10 @@
-import { db, isDbConnected } from '../db';
+import { db, checkDbConnection } from '../db';
 import { latestSnapshot } from '../db/schema';
 import { sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { dataSyncService } from './data-sync';
 import path from 'path';
+import fs from 'fs';
 
 /**
  * Startup service - handles automatic database setup and initial data sync
@@ -16,9 +17,10 @@ export class StartupService {
   async initialize(): Promise<void> {
     console.log('🚀 Running startup initialization...');
     
-    // Skip if no database configured
-    if (!isDbConnected()) {
-      console.log('⚠️  No database configured - skipping initialization');
+    // Wait for database connection (with timeout)
+    const connected = await this.waitForConnection(10000);
+    if (!connected) {
+      console.log('⚠️  Database not connected after timeout - skipping initialization');
       return;
     }
 
@@ -44,6 +46,22 @@ export class StartupService {
   }
 
   /**
+   * Wait for database connection with timeout
+   */
+  private async waitForConnection(timeoutMs: number): Promise<boolean> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const connected = await checkDbConnection();
+      if (connected) {
+        console.log('✅ Database connection established');
+        return true;
+      }
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    return false;
+  }
+
+  /**
    * Run Drizzle migrations automatically
    * This handles schema changes on every deployment
    */
@@ -54,20 +72,41 @@ export class StartupService {
       // Determine migrations folder path
       // In production (Docker), we're at /app/apps/api
       // In development, we're at the project root
-      const migrationsFolder = process.env.NODE_ENV === 'production'
-        ? '/app/apps/api/drizzle'
-        : path.join(process.cwd(), 'drizzle');
+      const cwd = process.cwd();
+      console.log(`📁 Current working directory: ${cwd}`);
       
-      console.log(`📁 Migrations folder: ${migrationsFolder}`);
+      // Try multiple possible paths
+      const possiblePaths = [
+        path.join(cwd, 'drizzle'),                    // ./drizzle (from apps/api)
+        '/app/apps/api/drizzle',                       // Docker absolute path
+        path.join(cwd, 'apps/api/drizzle'),           // From project root
+        path.join(__dirname, '../../drizzle'),        // Relative to this file
+      ];
+      
+      let migrationsFolder: string | null = null;
+      for (const p of possiblePaths) {
+        console.log(`📁 Checking path: ${p}`);
+        if (fs.existsSync(p)) {
+          migrationsFolder = p;
+          console.log(`✅ Found migrations at: ${p}`);
+          break;
+        }
+      }
+      
+      if (!migrationsFolder) {
+        console.log('⚠️  No migrations folder found at any of:', possiblePaths);
+        console.log('⚠️  Skipping migrations - database schema must already exist');
+        return;
+      }
+      
+      // List migration files for debugging
+      const files = fs.readdirSync(migrationsFolder);
+      console.log(`📁 Migration files found: ${files.join(', ')}`);
       
       await migrate(db, { migrationsFolder });
       console.log('✅ Database migrations complete');
     } catch (error: any) {
-      // If migrations folder doesn't exist or no migrations, that's okay
-      if (error.code === 'ENOENT') {
-        console.log('⚠️  No migrations folder found - using existing schema');
-        return;
-      }
+      console.error('❌ Migration error:', error.message || error);
       // If already up to date, no error
       if (error.message?.includes('already been applied')) {
         console.log('✅ Database already up to date');
