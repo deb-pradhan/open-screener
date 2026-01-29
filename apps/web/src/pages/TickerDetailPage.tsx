@@ -1,6 +1,5 @@
-import { useState, Suspense } from 'react';
+import { Suspense } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useTickerCore } from '@/hooks/useTickerData';
@@ -16,7 +15,6 @@ import { AlertCircle, ArrowLeft, RefreshCw } from 'lucide-react';
 export default function TickerDetailPage() {
   const { symbol } = useParams<{ symbol: string }>();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('overview');
 
   const { data: coreData, isLoading, error, refetch } = useTickerCore(symbol!);
 
@@ -70,59 +68,45 @@ export default function TickerDetailPage() {
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      {/* Always visible header */}
+      {/* Header */}
       <TickerHeader snapshot={snapshot} company={company} />
 
-      {/* Tab navigation */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="w-full justify-start overflow-x-auto flex-nowrap">
-          <TabsTrigger value="overview" className="flex-shrink-0">Overview</TabsTrigger>
-          <TabsTrigger value="financials" className="flex-shrink-0">Financials</TabsTrigger>
-          <TabsTrigger value="news" className="flex-shrink-0">News</TabsTrigger>
-          <TabsTrigger value="dividends" className="flex-shrink-0">Dividends</TabsTrigger>
-        </TabsList>
+      {/* Overview Section - Chart, Trading Info, Valuation, etc. */}
+      <SectionErrorBoundary>
+        <TickerOverview
+          symbol={symbol!}
+          snapshot={snapshot}
+          ratios={ratios}
+          company={company}
+          earnings={earnings}
+          recommendations={recommendations}
+          upgradeDowngrades={upgradeDowngrades}
+          holdersBreakdown={holdersBreakdown}
+          insiderTransactions={insiderTransactions}
+          institutionalHolders={institutionalHolders}
+        />
+      </SectionErrorBoundary>
 
-        <TabsContent value="overview" className="mt-4">
-          <SectionErrorBoundary>
-            <TickerOverview
-              symbol={symbol!}
-              snapshot={snapshot}
-              ratios={ratios}
-              company={company}
-              earnings={earnings}
-              recommendations={recommendations}
-              upgradeDowngrades={upgradeDowngrades}
-              holdersBreakdown={holdersBreakdown}
-              insiderTransactions={insiderTransactions}
-              institutionalHolders={institutionalHolders}
-            />
-          </SectionErrorBoundary>
-        </TabsContent>
+      {/* Financial Statements */}
+      <SectionErrorBoundary>
+        <Suspense fallback={<FinancialsSkeleton />}>
+          <TickerFinancials symbol={symbol!} />
+        </Suspense>
+      </SectionErrorBoundary>
 
-        <TabsContent value="financials" className="mt-4">
-          <SectionErrorBoundary>
-            <Suspense fallback={<FinancialsSkeleton />}>
-              <TickerFinancials symbol={symbol!} />
-            </Suspense>
-          </SectionErrorBoundary>
-        </TabsContent>
+      {/* Latest News */}
+      <SectionErrorBoundary>
+        <Suspense fallback={<NewsSkeleton />}>
+          <TickerNews symbol={symbol!} />
+        </Suspense>
+      </SectionErrorBoundary>
 
-        <TabsContent value="news" className="mt-4">
-          <SectionErrorBoundary>
-            <Suspense fallback={<NewsSkeleton />}>
-              <TickerNews symbol={symbol!} />
-            </Suspense>
-          </SectionErrorBoundary>
-        </TabsContent>
-
-        <TabsContent value="dividends" className="mt-4">
-          <SectionErrorBoundary>
-            <Suspense fallback={<DividendsSkeleton />}>
-              <TickerDividends symbol={symbol!} />
-            </Suspense>
-          </SectionErrorBoundary>
-        </TabsContent>
-      </Tabs>
+      {/* Dividends & Splits */}
+      <SectionErrorBoundary>
+        <Suspense fallback={<DividendsSkeleton />}>
+          <TickerDividends symbol={symbol!} />
+        </Suspense>
+      </SectionErrorBoundary>
 
       {/* Data freshness indicator */}
       {coreData.meta?.freshness && (
