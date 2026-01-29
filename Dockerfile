@@ -76,6 +76,9 @@ COPY packages/shared ./packages/shared
 COPY --from=build-api /app/apps/api/dist ./apps/api/dist
 COPY --from=build-api /app/apps/api/src ./apps/api/src
 
+# Copy Drizzle migrations for auto-migration on startup
+COPY apps/api/drizzle ./apps/api/drizzle
+
 # Copy built frontend static files
 COPY --from=build-web /app/apps/web/dist ./apps/api/public
 
