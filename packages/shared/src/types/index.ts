@@ -725,9 +725,24 @@ export interface PresetCategoryInfo {
 
 export const PRESET_CATEGORIES: PresetCategoryInfo[] = [
   {
+    id: 'fundamentals',
+    name: 'Fundamentals',
+    description: 'Screens based on valuation, growth, and financial health',
+  },
+  {
+    id: 'momentum',
+    name: 'Momentum',
+    description: 'Identify stocks with strong directional movement',
+  },
+  {
     id: 'technical',
-    name: 'Technical Signals',
+    name: 'Technical Analysis',
     description: 'Screens based on RSI, MACD, and other technical indicators',
+  },
+  {
+    id: 'quality',
+    name: 'Quality & Income',
+    description: 'High-quality companies with strong profitability and dividends',
   },
   {
     id: 'moving_averages',
@@ -740,24 +755,9 @@ export const PRESET_CATEGORIES: PresetCategoryInfo[] = [
     description: 'Screens based on price action and volume activity',
   },
   {
-    id: 'momentum',
-    name: 'Momentum',
-    description: 'Identify stocks with strong directional movement',
-  },
-  {
-    id: 'fundamentals',
-    name: 'Fundamentals',
-    description: 'Screens based on valuation, growth, and financial health',
-  },
-  {
     id: 'analysts',
     name: 'Analyst Insights',
     description: 'Screens based on analyst ratings, price targets, and coverage',
-  },
-  {
-    id: 'quality',
-    name: 'Quality & Income',
-    description: 'High-quality companies with strong profitability and dividends',
   },
 ];
 

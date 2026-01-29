@@ -74,15 +74,14 @@ export class ScreenerService {
     
     const total = Number(countResult?.count || 0);
     
-    // Get paginated results
-    const sortColumn = this.getDBSortColumn(filter.sortBy || 'volume');
-    const sortOrder = filter.sortOrder === 'asc' ? asc(sortColumn) : desc(sortColumn);
+    // Get paginated results with custom sorting for certain presets
+    const sortExpression = this.getPresetDBSortExpression(filter.id, filter.sortBy, filter.sortOrder);
     
     const rows = await db
       .select()
       .from(latestSnapshot)
       .where(whereClause)
-      .orderBy(sortOrder)
+      .orderBy(sortExpression)
       .limit(pageSize)
       .offset((page - 1) * pageSize);
     
@@ -256,34 +255,110 @@ export class ScreenerService {
     return this.getDBColumn(field) || latestSnapshot.volume;
   }
 
+  // Get custom sort expressions for presets that need computed metrics
+  private getPresetDBSortExpression(presetId: string, defaultSortBy?: string, defaultSortOrder?: 'asc' | 'desc') {
+    switch (presetId) {
+      case 'highUpside':
+      case 'undervalued':
+        // Sort by upside percentage: (target_mean_price / price - 1) DESC
+        return sql`CASE WHEN ${latestSnapshot.price} > 0 AND ${latestSnapshot.targetMeanPrice} IS NOT NULL 
+          THEN (${latestSnapshot.targetMeanPrice} / ${latestSnapshot.price}) ELSE 0 END DESC`;
+      
+      case 'near52WeekLow':
+        // Sort by proximity to 52-week low: (price / fifty_two_week_low - 1) ASC (closest to low first)
+        return sql`CASE WHEN ${latestSnapshot.fiftyTwoWeekLow} > 0 
+          THEN (${latestSnapshot.price} / ${latestSnapshot.fiftyTwoWeekLow}) ELSE 999 END ASC`;
+      
+      case 'near52WeekHigh':
+        // Sort by proximity to 52-week high: (1 - price / fifty_two_week_high) ASC (closest to high first)
+        return sql`CASE WHEN ${latestSnapshot.fiftyTwoWeekHigh} > 0 
+          THEN (1 - ${latestSnapshot.price} / ${latestSnapshot.fiftyTwoWeekHigh}) ELSE 999 END ASC`;
+      
+      default:
+        // Use standard sorting
+        const sortColumn = this.getDBSortColumn(defaultSortBy || 'volume');
+        return defaultSortOrder === 'asc' ? asc(sortColumn) : desc(sortColumn);
+    }
+  }
+
   private getPresetDBConditions(presetId: string): any[] {
     switch (presetId) {
       case 'goldenCross':
         // Price > SMA50 > SMA200
         return [
+          sql`${latestSnapshot.sma50} IS NOT NULL`,
+          sql`${latestSnapshot.sma200} IS NOT NULL`,
           sql`${latestSnapshot.price} > ${latestSnapshot.sma50}`,
           sql`${latestSnapshot.sma50} > ${latestSnapshot.sma200}`,
         ];
       case 'deathCross':
         return [
+          sql`${latestSnapshot.sma50} IS NOT NULL`,
+          sql`${latestSnapshot.sma200} IS NOT NULL`,
           sql`${latestSnapshot.price} < ${latestSnapshot.sma50}`,
           sql`${latestSnapshot.sma50} < ${latestSnapshot.sma200}`,
         ];
       case 'aboveSma200':
-        return [sql`${latestSnapshot.price} > ${latestSnapshot.sma200}`];
+        return [
+          sql`${latestSnapshot.sma200} IS NOT NULL`,
+          sql`${latestSnapshot.price} > ${latestSnapshot.sma200}`,
+        ];
       case 'belowSma200':
-        return [sql`${latestSnapshot.price} < ${latestSnapshot.sma200}`];
+        return [
+          sql`${latestSnapshot.sma200} IS NOT NULL`,
+          sql`${latestSnapshot.price} < ${latestSnapshot.sma200}`,
+        ];
       case 'emaCrossover':
-        return [sql`${latestSnapshot.ema12} > ${latestSnapshot.ema26}`];
+        return [
+          sql`${latestSnapshot.ema12} IS NOT NULL`,
+          sql`${latestSnapshot.ema26} IS NOT NULL`,
+          sql`${latestSnapshot.ema12} > ${latestSnapshot.ema26}`,
+        ];
       case 'uptrend':
         return [
+          sql`${latestSnapshot.sma50} IS NOT NULL`,
+          sql`${latestSnapshot.sma200} IS NOT NULL`,
           sql`${latestSnapshot.price} > ${latestSnapshot.sma50}`,
           sql`${latestSnapshot.price} > ${latestSnapshot.sma200}`,
         ];
       case 'downtrend':
         return [
+          sql`${latestSnapshot.sma50} IS NOT NULL`,
+          sql`${latestSnapshot.sma200} IS NOT NULL`,
           sql`${latestSnapshot.price} < ${latestSnapshot.sma50}`,
           sql`${latestSnapshot.price} < ${latestSnapshot.sma200}`,
+        ];
+      case 'macdBullish':
+        // MACD histogram positive
+        return [
+          sql`${latestSnapshot.macdHistogram} IS NOT NULL`,
+          sql`${latestSnapshot.macdHistogram} > 0`,
+        ];
+      case 'near52WeekLow':
+        // Price within 10% of 52-week low
+        return [
+          sql`${latestSnapshot.fiftyTwoWeekLow} IS NOT NULL`,
+          sql`${latestSnapshot.fiftyTwoWeekLow} > 0`,
+          sql`${latestSnapshot.price} <= ${latestSnapshot.fiftyTwoWeekLow} * 1.10`,
+        ];
+      case 'near52WeekHigh':
+        // Price within 5% of 52-week high
+        return [
+          sql`${latestSnapshot.fiftyTwoWeekHigh} IS NOT NULL`,
+          sql`${latestSnapshot.fiftyTwoWeekHigh} > 0`,
+          sql`${latestSnapshot.price} >= ${latestSnapshot.fiftyTwoWeekHigh} * 0.95`,
+        ];
+      case 'highUpside':
+        // Target price at least 20% above current price
+        return [
+          sql`${latestSnapshot.targetMeanPrice} IS NOT NULL`,
+          sql`${latestSnapshot.targetMeanPrice} > ${latestSnapshot.price} * 1.20`,
+        ];
+      case 'undervalued':
+        // Price below target mean price
+        return [
+          sql`${latestSnapshot.targetMeanPrice} IS NOT NULL`,
+          sql`${latestSnapshot.price} < ${latestSnapshot.targetMeanPrice}`,
         ];
       default:
         return [];
@@ -396,10 +471,8 @@ export class ScreenerService {
       }
     }
 
-    // Final sort
-    const sortField = filter.sortBy || 'volume';
-    const sortOrder = filter.sortOrder || 'desc';
-    filtered = this.sortStocks(filtered, sortField, sortOrder);
+    // Final sort - use custom sorting for certain presets
+    filtered = this.applyPresetSort(filter.id, filtered, filter.sortBy, filter.sortOrder);
 
     const total = filtered.length;
     const start = (page - 1) * pageSize;
@@ -643,7 +716,8 @@ export class ScreenerService {
   private presetNeedsIndicators(presetId: string): boolean {
     const presetsNeedingIndicators = [
       'goldenCross', 'deathCross', 'aboveSma200', 'belowSma200', 
-      'emaCrossover', 'macdBullish', 'uptrend', 'downtrend'
+      'emaCrossover', 'macdBullish', 'uptrend', 'downtrend',
+      'near52WeekLow', 'near52WeekHigh', 'highUpside', 'undervalued'
     ];
     return presetsNeedingIndicators.includes(presetId);
   }
@@ -685,10 +759,9 @@ export class ScreenerService {
         );
       
       case 'macdBullish':
-        // MACD histogram positive (or price momentum positive)
+        // MACD histogram positive - strict filtering
         return stocks.filter(s => 
-          (s.macd?.histogram !== undefined && s.macd.histogram > 0) ||
-          (s.changePercent > 0)
+          s.macd?.histogram !== undefined && s.macd.histogram > 0
         );
       
       case 'uptrend':
@@ -703,6 +776,34 @@ export class ScreenerService {
         return stocks.filter(s => 
           s.sma50 !== undefined && s.sma200 !== undefined &&
           s.price < s.sma50 && s.price < s.sma200
+        );
+      
+      case 'near52WeekLow':
+        // Price within 10% of 52-week low
+        return stocks.filter(s => 
+          s.fiftyTwoWeekLow !== undefined && s.fiftyTwoWeekLow > 0 &&
+          s.price <= s.fiftyTwoWeekLow * 1.10
+        );
+      
+      case 'near52WeekHigh':
+        // Price within 5% of 52-week high
+        return stocks.filter(s => 
+          s.fiftyTwoWeekHigh !== undefined && s.fiftyTwoWeekHigh > 0 &&
+          s.price >= s.fiftyTwoWeekHigh * 0.95
+        );
+      
+      case 'highUpside':
+        // Target price at least 20% above current price
+        return stocks.filter(s => 
+          s.targetMeanPrice !== undefined && s.price > 0 &&
+          s.targetMeanPrice > s.price * 1.20
+        );
+      
+      case 'undervalued':
+        // Price below analyst target mean price
+        return stocks.filter(s => 
+          s.targetMeanPrice !== undefined && s.price > 0 &&
+          s.price < s.targetMeanPrice
         );
       
       default:
@@ -729,6 +830,70 @@ export class ScreenerService {
 
       return 0;
     });
+  }
+
+  // Apply custom sorting for specific presets (computed metrics)
+  private applyPresetSort(
+    presetId: string,
+    stocks: StockIndicators[],
+    defaultSortBy?: string,
+    defaultSortOrder?: 'asc' | 'desc'
+  ): StockIndicators[] {
+    switch (presetId) {
+      case 'highUpside':
+        // Sort by upside percentage (target / price - 1)
+        return [...stocks].sort((a, b) => {
+          const aUpside = (a.targetMeanPrice && a.price > 0) 
+            ? (a.targetMeanPrice / a.price - 1) * 100 
+            : -Infinity;
+          const bUpside = (b.targetMeanPrice && b.price > 0) 
+            ? (b.targetMeanPrice / b.price - 1) * 100 
+            : -Infinity;
+          return bUpside - aUpside; // desc - highest upside first
+        });
+
+      case 'undervalued':
+        // Sort by upside percentage
+        return [...stocks].sort((a, b) => {
+          const aUpside = (a.targetMeanPrice && a.price > 0) 
+            ? (a.targetMeanPrice / a.price - 1) * 100 
+            : -Infinity;
+          const bUpside = (b.targetMeanPrice && b.price > 0) 
+            ? (b.targetMeanPrice / b.price - 1) * 100 
+            : -Infinity;
+          return bUpside - aUpside; // desc - highest upside first
+        });
+
+      case 'near52WeekLow':
+        // Sort by proximity to 52-week low (closest first)
+        return [...stocks].sort((a, b) => {
+          const aProximity = (a.fiftyTwoWeekLow && a.price > 0) 
+            ? (a.price / a.fiftyTwoWeekLow - 1) * 100 
+            : Infinity;
+          const bProximity = (b.fiftyTwoWeekLow && b.price > 0) 
+            ? (b.price / b.fiftyTwoWeekLow - 1) * 100 
+            : Infinity;
+          return aProximity - bProximity; // asc - closest to low first
+        });
+
+      case 'near52WeekHigh':
+        // Sort by proximity to 52-week high (closest first)
+        return [...stocks].sort((a, b) => {
+          const aProximity = (a.fiftyTwoWeekHigh && a.price > 0) 
+            ? (1 - a.price / a.fiftyTwoWeekHigh) * 100 
+            : Infinity;
+          const bProximity = (b.fiftyTwoWeekHigh && b.price > 0) 
+            ? (1 - b.price / b.fiftyTwoWeekHigh) * 100 
+            : Infinity;
+          return aProximity - bProximity; // asc - closest to high first
+        });
+
+      default:
+        // Use default sorting
+        const sortField = (defaultSortBy || 'volume') as keyof StockIndicators;
+        const sortOrder = defaultSortOrder || 'desc';
+        return this.sortStocks(stocks, sortField, sortOrder);
+    }
   }
 
   // Get all indicators from Redis cache

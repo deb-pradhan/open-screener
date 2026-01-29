@@ -1,12 +1,11 @@
-import { ReactNode, useState } from 'react';
-import { useLocation, Link } from 'react-router-dom';
+import { useState } from 'react';
+import { ScreenerView } from '@/components/screener/ScreenerView';
+import { FilterBuilder } from '@/components/screener/FilterBuilder';
+import { PresetExplorer } from '@/components/screener/PresetExplorer';
 import { useWebSocket } from '@/hooks/useWebSocket';
-import { ChevronRight, Search, X } from 'lucide-react';
-import TickerSearch from '@/components/search/TickerSearch';
+import { ChevronRight } from 'lucide-react';
 
-interface AppLayoutProps {
-  children: ReactNode;
-}
+type ViewMode = 'explore' | 'screener' | 'custom';
 
 // Map preset IDs to readable names
 const presetNames: Record<string, string> = {
@@ -14,24 +13,34 @@ const presetNames: Record<string, string> = {
   momentum: 'Momentum Breakouts',
   oversold: 'Oversold Bounces',
   gapUp: 'Gap Up Stocks',
-  custom: 'Custom Screen',
 };
 
-export default function AppLayout({ children }: AppLayoutProps) {
-  const location = useLocation();
-  const isHome = location.pathname === '/';
-  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
-  
-  // Get active preset from URL if on screener page
-  const presetMatch = location.pathname.match(/\/screener\/(.+)/);
-  const activePreset = presetMatch ? presetMatch[1] : null;
-  
-  const { isConnected, lastUpdate } = useWebSocket(activePreset || 'highVolume');
+function App() {
+  const [viewMode, setViewMode] = useState<ViewMode>('explore');
+  const [activePreset, setActivePreset] = useState<string>('highVolume');
+  const { isConnected, lastUpdate } = useWebSocket(activePreset);
+
+  const handlePresetSelect = (presetId: string) => {
+    setActivePreset(presetId);
+    setViewMode('screener');
+  };
+
+  const handleCreateCustom = () => {
+    setViewMode('custom');
+  };
+
+  const handleBackToExplore = () => {
+    setViewMode('explore');
+  };
 
   // Get current page name for breadcrumb
-  const currentPageName = activePreset 
-    ? presetNames[activePreset] || activePreset 
-    : null;
+  const getCurrentPageName = () => {
+    if (viewMode === 'screener') return presetNames[activePreset] || activePreset;
+    if (viewMode === 'custom') return 'Custom Screen';
+    return null;
+  };
+
+  const currentPageName = getCurrentPageName();
 
   return (
     <div className="min-h-screen bg-surface-canvas flex flex-col">
@@ -42,8 +51,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
             {/* Left: Logo + Breadcrumb */}
             <div className="flex items-center gap-3 sm:gap-4 min-w-0">
               {/* Logo - Always first, always links home */}
-              <Link 
-                to="/"
+              <button 
+                onClick={handleBackToExplore}
                 className="flex items-center gap-2 sm:gap-3 hover:opacity-80 transition-opacity flex-shrink-0"
               >
                 <img 
@@ -52,15 +61,15 @@ export default function AppLayout({ children }: AppLayoutProps) {
                   className="w-8 h-8 sm:w-10 sm:h-10 object-contain"
                 />
                 <div className="hidden sm:block">
-                  <h1 className="text-base sm:text-h1 text-ink-primary leading-tight">Open Screener</h1>
-                  <p className="text-[9px] sm:text-label text-ink-tertiary">
+                  <h1 className="text-base sm:text-h1 text-ink-primary leading-tight text-left">Open Screener</h1>
+                  <p className="text-[9px] sm:text-label text-ink-tertiary text-left">
                     REAL-TIME TECHNICAL ANALYSIS
                   </p>
                 </div>
-              </Link>
+              </button>
               
               {/* Breadcrumb - Shows current location */}
-              {!isHome && currentPageName && (
+              {viewMode !== 'explore' && currentPageName && (
                 <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
                   <ChevronRight className="h-4 w-4 text-ink-tertiary flex-shrink-0" strokeWidth={1.5} />
                   <span className="text-sm text-ink-secondary truncate">
@@ -70,26 +79,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
               )}
             </div>
             
-            {/* Center: Search */}
-            <div className="flex-1 max-w-md mx-4 hidden sm:block">
-              <TickerSearch placeholder="Search ticker or company..." />
-            </div>
-            
-            {/* Right: Status indicators + Mobile Search Toggle */}
+            {/* Right: Status indicators */}
             <div className="flex items-center gap-2 sm:gap-6 flex-shrink-0">
-              {/* Mobile search toggle */}
-              <button
-                onClick={() => setMobileSearchOpen(!mobileSearchOpen)}
-                className="sm:hidden p-2 hover:bg-surface-subtle rounded-lg transition-colors"
-                aria-label="Toggle search"
-              >
-                {mobileSearchOpen ? (
-                  <X className="h-5 w-5 text-ink-secondary" />
-                ) : (
-                  <Search className="h-5 w-5 text-ink-secondary" />
-                )}
-              </button>
-              
               <div className="flex items-center gap-1.5 sm:gap-2">
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
                   isConnected ? 'bg-signal-success animate-pulse-dot' : 'bg-signal-error'
@@ -105,22 +96,28 @@ export default function AppLayout({ children }: AppLayoutProps) {
               )}
             </div>
           </div>
-          
-          {/* Mobile Search Bar */}
-          {mobileSearchOpen && (
-            <div className="sm:hidden mt-3 pb-1">
-              <TickerSearch 
-                placeholder="Search ticker or company..." 
-                onSelect={() => setMobileSearchOpen(false)}
-              />
-            </div>
-          )}
         </div>
       </header>
 
       {/* Main Content */}
       <main className="container mx-auto px-4 sm:px-6 py-4 sm:py-6 flex-1">
-        {children}
+        {viewMode === 'explore' && (
+          <PresetExplorer
+            onPresetSelect={handlePresetSelect}
+            onCreateCustom={handleCreateCustom}
+          />
+        )}
+        
+        {viewMode === 'screener' && (
+          <ScreenerView
+            activePreset={activePreset}
+            onPresetChange={setActivePreset}
+          />
+        )}
+        
+        {viewMode === 'custom' && (
+          <FilterBuilder />
+        )}
       </main>
 
       {/* Footer */}
@@ -154,3 +151,5 @@ export default function AppLayout({ children }: AppLayoutProps) {
     </div>
   );
 }
+
+export default App;
