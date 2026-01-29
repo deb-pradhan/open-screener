@@ -18,7 +18,7 @@ COPY apps/web/package.json ./apps/web/
 COPY packages/shared/package.json ./packages/shared/
 
 # Install all dependencies
-RUN bun install --frozen-lockfile
+RUN bun install
 
 # ============================================
 # Stage 3: Build shared package
@@ -67,7 +67,7 @@ COPY apps/api/package.json ./apps/api/
 COPY packages/shared/package.json ./packages/shared/
 
 # Install production dependencies only
-RUN bun install --frozen-lockfile --production
+RUN bun install --production
 
 # Copy shared package (needed at runtime for types)
 COPY packages/shared ./packages/shared
