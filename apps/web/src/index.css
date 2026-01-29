@@ -156,3 +156,103 @@
   background-color: hsl(var(--color-accent-subtle));
   color: hsl(var(--color-accent-main));
 }
+
+/* Mobile-first responsive utilities */
+@layer utilities {
+  /* Hide on mobile, show on larger screens */
+  .hide-mobile {
+    @apply hidden sm:block;
+  }
+  
+  /* Show on mobile, hide on larger screens */
+  .show-mobile {
+    @apply block sm:hidden;
+  }
+  
+  /* Sticky column for tables */
+  .sticky-col {
+    position: sticky;
+    left: 0;
+    z-index: 10;
+    background: inherit;
+  }
+  
+  .sticky-col::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 1px;
+    background: hsl(var(--border-grid));
+  }
+  
+  /* Mobile table cell - compact */
+  .cell-compact {
+    @apply px-2 py-2 sm:px-4 sm:py-3;
+  }
+  
+  /* Touch-friendly tap targets */
+  .tap-target {
+    @apply min-h-[44px] min-w-[44px];
+  }
+  
+  /* Responsive container padding */
+  .container-responsive {
+    @apply px-4 sm:px-6;
+  }
+  
+  /* Mobile card padding */
+  .card-padding-responsive {
+    @apply p-4 sm:p-6;
+  }
+  
+  /* Text truncation for mobile */
+  .truncate-mobile {
+    @apply truncate sm:text-clip sm:whitespace-normal;
+  }
+}
+
+/* Responsive typography */
+@media (max-width: 639px) {
+  .text-h1 {
+    font-size: 1.125rem;
+    line-height: 1.4;
+  }
+  
+  .text-body {
+    font-size: 0.875rem;
+  }
+  
+  .text-data {
+    font-size: 0.75rem;
+  }
+  
+  .text-label {
+    font-size: 0.625rem;
+  }
+}
+
+/* Mobile table improvements */
+@media (max-width: 639px) {
+  table {
+    font-size: 0.75rem;
+  }
+  
+  th, td {
+    white-space: nowrap;
+  }
+}
+
+/* Smooth horizontal scrolling for tables */
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+/* Mobile-friendly scrollbar */
+@media (max-width: 639px) {
+  ::-webkit-scrollbar {
+    height: 4px;
+  }
+}

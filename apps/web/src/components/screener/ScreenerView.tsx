@@ -44,32 +44,32 @@ export function ScreenerView({ activePreset, onPresetChange }: ScreenerViewProps
     () => [
       {
         accessorKey: 'symbol',
-        header: () => <span className="text-label">STOCK</span>,
+        header: () => <span className="text-[10px] sm:text-label">STOCK</span>,
         cell: ({ row }) => {
           const logo = row.original.logo;
           const name = row.original.name;
           const symbol = row.getValue('symbol') as string;
           
           return (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               {logo ? (
                 <img 
                   src={logo} 
                   alt={symbol}
-                  className="w-8 h-8 object-contain bg-surface-subtle border border-border-element"
+                  className="w-6 h-6 sm:w-8 sm:h-8 object-contain bg-surface-subtle border border-border-element flex-shrink-0"
                   onError={(e) => {
                     (e.target as HTMLImageElement).style.display = 'none';
                   }}
                 />
               ) : (
-                <div className="w-8 h-8 bg-surface-subtle border border-border-element flex items-center justify-center text-[10px] font-mono text-ink-secondary">
+                <div className="w-6 h-6 sm:w-8 sm:h-8 bg-surface-subtle border border-border-element flex items-center justify-center text-[8px] sm:text-[10px] font-mono text-ink-secondary flex-shrink-0">
                   {symbol.slice(0, 2)}
                 </div>
               )}
-              <div>
-                <div className="font-mono text-data text-ink-primary">{symbol}</div>
+              <div className="min-w-0">
+                <div className="font-mono text-[11px] sm:text-data text-ink-primary">{symbol}</div>
                 {name && name !== symbol && (
-                  <div className="text-[11px] text-ink-tertiary truncate max-w-[140px]">
+                  <div className="text-[10px] sm:text-[11px] text-ink-tertiary truncate max-w-[80px] sm:max-w-[140px]">
                     {name}
                   </div>
                 )}
@@ -239,13 +239,14 @@ export function ScreenerView({ activePreset, onPresetChange }: ScreenerViewProps
     <div className="space-y-0">
       {/* Filters Bar */}
       <Card className="border-b-0">
-        <CardContent className="py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-6">
-              <div className="flex items-center gap-3">
-                <span className="text-label text-ink-secondary">PRESET</span>
+        <CardContent className="py-3 sm:py-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            {/* Left: Preset selector + results count */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <span className="text-[10px] sm:text-label text-ink-secondary flex-shrink-0">PRESET</span>
                 <Select value={activePreset} onValueChange={onPresetChange}>
-                  <SelectTrigger className="w-[200px]">
+                  <SelectTrigger className="w-full sm:w-[200px]">
                     <SelectValue placeholder="Select preset" />
                   </SelectTrigger>
                   <SelectContent>
@@ -258,16 +259,19 @@ export function ScreenerView({ activePreset, onPresetChange }: ScreenerViewProps
                 </Select>
               </div>
               {results && (
-                <Badge variant="outline">
+                <Badge variant="outline" className="w-fit">
                   {results.total} results
                 </Badge>
               )}
             </div>
+            
+            {/* Right: Refresh button */}
             <Button
               variant="outline"
               size="sm"
               onClick={() => refetch()}
               disabled={isLoading}
+              className="w-full sm:w-auto"
             >
               <RefreshCw className={`mr-2 h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} strokeWidth={1.5} />
               Refresh
@@ -278,48 +282,54 @@ export function ScreenerView({ activePreset, onPresetChange }: ScreenerViewProps
 
       {/* Results Table */}
       <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
-          <CardTitle className="flex items-center gap-2">
+        <CardHeader className="flex-row items-center justify-between space-y-0 px-4 sm:px-6">
+          <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
             <ChevronRight className="h-4 w-4 text-accent-main" strokeWidth={1.5} />
             Screener Results
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           {error ? (
-            <div className="text-center py-12 text-signal-error">
+            <div className="text-center py-8 sm:py-12 text-signal-error text-sm px-4">
               Error loading results: {error.message}
             </div>
           ) : isLoading ? (
-            <div className="text-center py-12 text-ink-tertiary">
+            <div className="text-center py-8 sm:py-12 text-ink-tertiary">
               <div className="inline-flex items-center gap-2">
                 <RefreshCw className="h-4 w-4 animate-spin" />
                 Loading...
               </div>
             </div>
           ) : !results || results.stocks.length === 0 ? (
-            <div className="text-center py-12 text-ink-tertiary">
+            <div className="text-center py-8 sm:py-12 text-ink-tertiary text-sm px-4">
               No stocks match the current filter criteria
             </div>
           ) : (
             <>
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className="w-full min-w-[600px] sm:min-w-full">
                   <thead>
                     {table.getHeaderGroups().map((headerGroup) => (
                       <tr key={headerGroup.id} className="border-y border-border-grid bg-surface-subtle">
-                        {headerGroup.headers.map((header) => (
-                          <th
-                            key={header.id}
-                            className="px-4 py-3 text-left"
-                          >
-                            {header.isPlaceholder
-                              ? null
-                              : flexRender(
-                                  header.column.columnDef.header,
-                                  header.getContext()
-                                )}
-                          </th>
-                        ))}
+                        {headerGroup.headers.map((header, idx) => {
+                          // Hide SMA columns on mobile (indices 5, 6, 7)
+                          const isHiddenMobile = idx >= 5;
+                          return (
+                            <th
+                              key={header.id}
+                              className={`px-2 sm:px-4 py-2 sm:py-3 text-left ${
+                                idx === 0 ? 'sticky left-0 bg-surface-subtle z-10' : ''
+                              } ${isHiddenMobile ? 'hidden md:table-cell' : ''}`}
+                            >
+                              {header.isPlaceholder
+                                ? null
+                                : flexRender(
+                                    header.column.columnDef.header,
+                                    header.getContext()
+                                  )}
+                            </th>
+                          );
+                        })}
                       </tr>
                     ))}
                   </thead>
@@ -329,14 +339,23 @@ export function ScreenerView({ activePreset, onPresetChange }: ScreenerViewProps
                         key={row.id}
                         className="border-b border-border-element hover:bg-accent-subtle/50 transition-colors"
                       >
-                        {row.getVisibleCells().map((cell) => (
-                          <td key={cell.id} className="px-4 py-3">
-                            {flexRender(
-                              cell.column.columnDef.cell,
-                              cell.getContext()
-                            )}
-                          </td>
-                        ))}
+                        {row.getVisibleCells().map((cell, idx) => {
+                          // Hide SMA columns on mobile (indices 5, 6, 7)
+                          const isHiddenMobile = idx >= 5;
+                          return (
+                            <td 
+                              key={cell.id} 
+                              className={`px-2 sm:px-4 py-2 sm:py-3 ${
+                                idx === 0 ? 'sticky left-0 bg-surface-card z-10' : ''
+                              } ${isHiddenMobile ? 'hidden md:table-cell' : ''}`}
+                            >
+                              {flexRender(
+                                cell.column.columnDef.cell,
+                                cell.getContext()
+                              )}
+                            </td>
+                          );
+                        })}
                       </tr>
                     ))}
                   </tbody>
@@ -344,16 +363,17 @@ export function ScreenerView({ activePreset, onPresetChange }: ScreenerViewProps
               </div>
 
               {/* Pagination */}
-              <div className="flex items-center justify-between px-4 py-3 border-t border-border-element">
-                <span className="text-label text-ink-tertiary">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-3 sm:px-4 py-3 border-t border-border-element">
+                <span className="text-[10px] sm:text-label text-ink-tertiary order-2 sm:order-1">
                   PAGE {page} OF {totalPages}
                 </span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 w-full sm:w-auto order-1 sm:order-2">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
                     disabled={page === 1}
+                    className="flex-1 sm:flex-none"
                   >
                     Previous
                   </Button>
@@ -362,6 +382,7 @@ export function ScreenerView({ activePreset, onPresetChange }: ScreenerViewProps
                     size="sm"
                     onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                     disabled={page === totalPages}
+                    className="flex-1 sm:flex-none"
                   >
                     Next
                   </Button>
