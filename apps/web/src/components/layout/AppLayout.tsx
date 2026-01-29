@@ -126,29 +126,26 @@ export default function AppLayout({ children }: AppLayoutProps) {
       {/* Footer */}
       <footer className="border-t border-border-grid bg-surface-card">
         <div className="container mx-auto px-4 sm:px-6 py-3 sm:py-4">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[9px] sm:text-label text-ink-tertiary">
-              MADE BY{' '}
-              <a 
-                href="https://x.com/WhatIsDeb" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-accent-main hover:underline"
-              >
-                DEB
-              </a>
-              {' '}FROM{' '}
-              <a 
-                href="https://x.com/jlabsdigital" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-accent-main hover:underline"
-              >
-                JLABS DIGITAL
-              </a>
-            </p>
-            <span className="text-accent-main font-mono text-[10px]">+</span>
-          </div>
+          <p className="text-[9px] sm:text-label text-ink-tertiary text-center sm:text-left">
+            MADE BY{' '}
+            <a 
+              href="https://x.com/WhatIsDeb" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-accent-main hover:underline"
+            >
+              DEB
+            </a>
+            {' '}FROM{' '}
+            <a 
+              href="https://x.com/jlabsdigital" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-accent-main hover:underline"
+            >
+              JLABS DIGITAL
+            </a>
+          </p>
         </div>
       </footer>
     </div>
