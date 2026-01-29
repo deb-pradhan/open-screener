@@ -18,6 +18,7 @@ COPY apps/web/package.json ./apps/web/
 COPY packages/shared/package.json ./packages/shared/
 
 # Install all dependencies
+ENV CI=false
 RUN bun install
 
 # ============================================
@@ -67,6 +68,7 @@ COPY apps/api/package.json ./apps/api/
 COPY packages/shared/package.json ./packages/shared/
 
 # Install production dependencies only
+ENV CI=false
 RUN bun install --production
 
 # Copy shared package (needed at runtime for types)
