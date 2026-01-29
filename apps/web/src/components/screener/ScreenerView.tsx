@@ -324,7 +324,7 @@ export function ScreenerView({ activePreset, onPresetChange }: ScreenerViewProps
                     ))}
                   </thead>
                   <tbody>
-                    {table.getRowModel().rows.map((row, idx) => (
+                    {table.getRowModel().rows.map((row) => (
                       <tr
                         key={row.id}
                         className="border-b border-border-element hover:bg-accent-subtle/50 transition-colors"

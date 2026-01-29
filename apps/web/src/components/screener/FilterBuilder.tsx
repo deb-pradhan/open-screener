@@ -42,7 +42,6 @@ export function FilterBuilder() {
     customConditions,
     addCondition,
     removeCondition,
-    updateCondition,
     clearConditions,
   } = useScreenerStore();
 
