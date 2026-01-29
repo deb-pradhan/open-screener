@@ -356,7 +356,7 @@ export class DataSyncService {
 
     if (values.length === 0) return;
 
-    // Batch upsert
+    // Batch upsert - preserve existing name/logo (don't overwrite with NULL)
     for (const value of values) {
       await db.insert(latestSnapshot)
         .values(value)
@@ -372,8 +372,78 @@ export class DataSyncService {
             vwap: value.vwap,
             dataDate: value.dataDate,
             updatedAt: value.updatedAt,
+            // Note: We intentionally DON'T update name/logoUrl here
+            // to preserve existing values. Logos are synced separately.
           },
         });
+    }
+  }
+
+  /**
+   * Sync logos for stocks that don't have them
+   * Fetches from Polygon API in batches to respect rate limits
+   */
+  async syncMissingLogos(limit: number = 500): Promise<{ processed: number; failed: number }> {
+    console.log('Starting logo sync for stocks missing logos...');
+    
+    try {
+      // Get stocks without logos, ordered by volume (prioritize popular stocks)
+      const stocksWithoutLogos = await db
+        .select({ symbol: latestSnapshot.symbol })
+        .from(latestSnapshot)
+        .where(sql`${latestSnapshot.logoUrl} IS NULL`)
+        .orderBy(desc(latestSnapshot.volume))
+        .limit(limit);
+      
+      if (stocksWithoutLogos.length === 0) {
+        console.log('All stocks have logos');
+        return { processed: 0, failed: 0 };
+      }
+
+      console.log(`Found ${stocksWithoutLogos.length} stocks without logos`);
+      
+      let processed = 0;
+      let failed = 0;
+      const batchSize = 20;
+
+      for (let i = 0; i < stocksWithoutLogos.length; i += batchSize) {
+        const batch = stocksWithoutLogos.slice(i, i + batchSize);
+        
+        const results = await Promise.allSettled(
+          batch.map(async ({ symbol }) => {
+            const details = await this.massiveClient.getTickerDetails(symbol);
+            
+            if (details) {
+              await db.update(latestSnapshot)
+                .set({
+                  name: details.name || symbol,
+                  logoUrl: details.branding?.logo_url,
+                })
+                .where(eq(latestSnapshot.symbol, symbol));
+            }
+          })
+        );
+
+        for (const result of results) {
+          if (result.status === 'fulfilled') processed++;
+          else failed++;
+        }
+
+        // Rate limiting
+        if (i + batchSize < stocksWithoutLogos.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
+        if (processed % 100 === 0) {
+          console.log(`Logo sync progress: ${processed}/${stocksWithoutLogos.length}`);
+        }
+      }
+
+      console.log(`Logo sync complete: ${processed} processed, ${failed} failed`);
+      return { processed, failed };
+    } catch (error) {
+      console.error('Logo sync failed:', error);
+      throw error;
     }
   }
 

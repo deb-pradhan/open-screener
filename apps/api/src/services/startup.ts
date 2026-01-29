@@ -281,8 +281,24 @@ export class StartupService {
       console.log('🔄 Background indicator sync starting...');
       const result = await dataSyncService.syncDailyData();
       console.log(`✅ Background indicator sync complete: ${result.processed} stocks with indicators`);
+      
+      // Also sync logos after indicators
+      await this.syncLogosInBackground();
     } catch (error) {
       console.error('❌ Background indicator sync failed:', error);
+    }
+  }
+
+  /**
+   * Sync logos in background (non-blocking)
+   */
+  private async syncLogosInBackground(): Promise<void> {
+    try {
+      console.log('🖼️ Background logo sync starting...');
+      const result = await dataSyncService.syncMissingLogos(1000);
+      console.log(`✅ Background logo sync complete: ${result.processed} logos fetched`);
+    } catch (error) {
+      console.error('❌ Background logo sync failed:', error);
     }
   }
 }

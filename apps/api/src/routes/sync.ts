@@ -73,6 +73,30 @@ syncRouter.post('/backfill/:symbol', async (c) => {
   }
 });
 
+// Sync missing logos
+syncRouter.post('/logos', async (c) => {
+  const limit = Number(c.req.query('limit')) || 500;
+  
+  try {
+    const result = await dataSyncService.syncMissingLogos(limit);
+    
+    const response: ApiResponse<typeof result> = {
+      success: true,
+      data: result,
+      timestamp: Date.now(),
+    };
+    
+    return c.json(response);
+  } catch (error) {
+    const response: ApiResponse<null> = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Logo sync failed',
+      timestamp: Date.now(),
+    };
+    return c.json(response, 500);
+  }
+});
+
 // Get sync status
 syncRouter.get('/status', async (c) => {
   try {
