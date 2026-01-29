@@ -70,9 +70,12 @@ App available at: http://localhost:3001
 2. Create a new project on [Railway](https://railway.app/)
 3. Select "Deploy from GitHub repo"
 4. Connect your forked repository
-5. Add environment variables in Railway dashboard:
+5. **Add PostgreSQL** (recommended):
+   - Click "New" → "Database" → "PostgreSQL"
+   - Railway auto-sets `DATABASE_URL`
+6. Add environment variables:
    - `MASSIVE_API_KEY` - Your Polygon.io API key
-6. Click Deploy!
+7. Click Deploy!
 
 Railway will automatically detect the `Dockerfile` and `railway.toml` configuration.
 
@@ -88,6 +91,9 @@ railway login
 # Initialize project
 railway init
 
+# Add PostgreSQL
+railway add --plugin postgresql
+
 # Set environment variables
 railway variables set MASSIVE_API_KEY=your_key
 railway variables set NODE_ENV=production
@@ -96,14 +102,58 @@ railway variables set NODE_ENV=production
 railway up
 ```
 
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        Railway                               │
+├─────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐     │
+│  │   Web App   │───▶│   Bun API   │───▶│ PostgreSQL  │     │
+│  │   (React)   │    │   (Hono)    │    │  (data)     │     │
+│  └─────────────┘    └──────┬──────┘    └─────────────┘     │
+│                            │                                 │
+│                     ┌──────▼──────┐                         │
+│                     │   Redis     │  (optional cache)       │
+│                     └──────┬──────┘                         │
+│                            │                                 │
+│                     ┌──────▼──────┐                         │
+│                     │ Scheduler   │                         │
+│                     │ • Hourly    │──▶ Polygon.io API       │
+│                     │ • Daily     │                         │
+│                     └─────────────┘                         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Data Flow
+
+1. **Scheduler** syncs data from Polygon.io:
+   - Hourly during market hours (9:30 AM - 4 PM ET)
+   - Daily full sync at 4:30 PM ET
+2. **PostgreSQL** stores historical prices + indicators
+3. **Screener queries** hit the database (fast!)
+4. **Redis** caches frequent queries (optional)
+
+### Without Database
+
+The app works without PostgreSQL - it fetches data on-demand from the Polygon API. This is slower and doesn't store historical data, but requires no database setup.
+
 ## Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `MASSIVE_API_KEY` | Yes | - | Polygon.io API key |
+| `DATABASE_URL` | No | - | PostgreSQL connection (enables data storage) |
+| `REDIS_URL` | No | - | Redis URL (optional cache layer) |
 | `PORT` | No | `3001` | Server port |
 | `NODE_ENV` | No | `development` | Environment mode |
-| `REDIS_URL` | No | - | Redis URL for caching (improves performance) |
+
+### Database Modes
+
+| Mode | `DATABASE_URL` | Behavior |
+|------|----------------|----------|
+| **API-only** | Not set | Fetches from Polygon on every request (slower) |
+| **Hybrid** | Set | Queries from PostgreSQL, syncs hourly (faster) |
 
 ## Project Structure
 

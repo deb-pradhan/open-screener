@@ -1,5 +1,8 @@
 import { redis, REDIS_KEYS, REDIS_TTL } from '../lib/redis';
+import { db } from '../db';
+import { latestSnapshot } from '../db/schema';
 import { MassiveClient } from '../clients/massive';
+import { desc, asc, gt, gte, lt, lte, eq, and, sql } from 'drizzle-orm';
 import type { 
   ScreenerFilter, 
   ScreenerResult, 
@@ -22,9 +25,164 @@ export class ScreenerService {
   private indicatorCacheTime: Map<string, number> = new Map();
   private indicatorCacheTTL = 300000; // 5 minute indicator cache
   private tickerDetailsCache: Map<string, { logo?: string; name?: string }> = new Map();
+  private useDatabase: boolean;
 
   constructor() {
     this.massiveClient = new MassiveClient();
+    // Use database if DATABASE_URL is set
+    this.useDatabase = !!process.env.DATABASE_URL;
+    
+    if (this.useDatabase) {
+      console.log('ScreenerService: Using PostgreSQL for queries');
+    } else {
+      console.log('ScreenerService: Using API-only mode (no database)');
+    }
+  }
+
+  // ============================================
+  // Database-powered screener (preferred)
+  // ============================================
+  
+  async runScreenerFromDB(
+    filter: ScreenerFilter,
+    page: number = 1,
+    pageSize: number = 50
+  ): Promise<ScreenerResult> {
+    // Build WHERE conditions from filter
+    const conditions = this.buildDBConditions(filter.conditions);
+    
+    // Apply special preset logic
+    const presetConditions = this.getPresetDBConditions(filter.id);
+    const allConditions = [...conditions, ...presetConditions].filter(Boolean);
+    
+    // Query with filters
+    const whereClause = allConditions.length > 0 ? and(...allConditions) : undefined;
+    
+    // Get total count
+    const [countResult] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(latestSnapshot)
+      .where(whereClause);
+    
+    const total = Number(countResult?.count || 0);
+    
+    // Get paginated results
+    const sortColumn = this.getDBSortColumn(filter.sortBy || 'volume');
+    const sortOrder = filter.sortOrder === 'asc' ? asc(sortColumn) : desc(sortColumn);
+    
+    const rows = await db
+      .select()
+      .from(latestSnapshot)
+      .where(whereClause)
+      .orderBy(sortOrder)
+      .limit(pageSize)
+      .offset((page - 1) * pageSize);
+    
+    // Map to StockIndicators format
+    const stocks: StockIndicators[] = rows.map(row => ({
+      symbol: row.symbol,
+      name: row.name || undefined,
+      logo: row.logoUrl || undefined,
+      price: row.price,
+      volume: row.volume,
+      changePercent: row.changePercent || 0,
+      rsi14: row.rsi14 || undefined,
+      sma20: row.sma20 || undefined,
+      sma50: row.sma50 || undefined,
+      sma200: row.sma200 || undefined,
+      ema12: row.ema12 || undefined,
+      ema26: row.ema26 || undefined,
+      macd: row.macdValue ? {
+        value: row.macdValue,
+        signal: row.macdSignal || 0,
+        histogram: row.macdHistogram || 0,
+      } : undefined,
+      updatedAt: row.updatedAt?.getTime() || Date.now(),
+    }));
+    
+    return {
+      stocks,
+      total,
+      page,
+      pageSize,
+      filterId: filter.id,
+      timestamp: Date.now(),
+    };
+  }
+
+  private buildDBConditions(conditions: FilterCondition[]) {
+    return conditions.map(condition => {
+      const column = this.getDBColumn(condition.field);
+      if (!column) return null;
+      
+      const value = condition.value;
+      
+      switch (condition.operator) {
+        case 'gt': return gt(column, value as number);
+        case 'gte': return gte(column, value as number);
+        case 'lt': return lt(column, value as number);
+        case 'lte': return lte(column, value as number);
+        case 'eq': return eq(column, value as number);
+        case 'between': {
+          const [min, max] = value as [number, number];
+          return and(gte(column, min), lte(column, max));
+        }
+        default: return null;
+      }
+    }).filter(Boolean);
+  }
+
+  private getDBColumn(field: string) {
+    const columnMap: Record<string, any> = {
+      price: latestSnapshot.price,
+      volume: latestSnapshot.volume,
+      changePercent: latestSnapshot.changePercent,
+      rsi14: latestSnapshot.rsi14,
+      sma20: latestSnapshot.sma20,
+      sma50: latestSnapshot.sma50,
+      sma200: latestSnapshot.sma200,
+      ema12: latestSnapshot.ema12,
+      ema26: latestSnapshot.ema26,
+    };
+    return columnMap[field];
+  }
+
+  private getDBSortColumn(field: string) {
+    return this.getDBColumn(field) || latestSnapshot.volume;
+  }
+
+  private getPresetDBConditions(presetId: string): any[] {
+    switch (presetId) {
+      case 'goldenCross':
+        // Price > SMA50 > SMA200
+        return [
+          sql`${latestSnapshot.price} > ${latestSnapshot.sma50}`,
+          sql`${latestSnapshot.sma50} > ${latestSnapshot.sma200}`,
+        ];
+      case 'deathCross':
+        return [
+          sql`${latestSnapshot.price} < ${latestSnapshot.sma50}`,
+          sql`${latestSnapshot.sma50} < ${latestSnapshot.sma200}`,
+        ];
+      case 'aboveSma200':
+        return [sql`${latestSnapshot.price} > ${latestSnapshot.sma200}`];
+      case 'belowSma200':
+        return [sql`${latestSnapshot.price} < ${latestSnapshot.sma200}`];
+      case 'emaCrossover':
+        return [sql`${latestSnapshot.ema12} > ${latestSnapshot.ema26}`];
+      case 'uptrend':
+        return [
+          sql`${latestSnapshot.price} > ${latestSnapshot.sma50}`,
+          sql`${latestSnapshot.price} > ${latestSnapshot.sma200}`,
+        ];
+      case 'downtrend':
+        return [
+          sql`${latestSnapshot.price} < ${latestSnapshot.sma50}`,
+          sql`${latestSnapshot.price} < ${latestSnapshot.sma200}`,
+        ];
+      default:
+        return [];
+    }
   }
 
   // Run screener with given filter
@@ -45,6 +203,34 @@ export class ScreenerService {
       // Redis might not be connected, continue without cache
     }
 
+    // Use database if available (much faster, pre-computed indicators)
+    if (this.useDatabase) {
+      try {
+        const result = await this.runScreenerFromDB(filter, page, pageSize);
+        
+        // Cache results
+        try {
+          await redis.setex(cacheKey, REDIS_TTL.SCREENER_RESULTS, JSON.stringify(result));
+        } catch { /* ignore */ }
+        
+        return result;
+      } catch (dbError) {
+        console.error('Database query failed, falling back to API:', dbError);
+        // Fall through to API-based screener
+      }
+    }
+
+    // Fallback: API-based screener (slower, on-demand)
+    return this.runScreenerFromAPI(filter, page, pageSize, cacheKey);
+  }
+
+  // Original API-based screener (fallback when no database)
+  private async runScreenerFromAPI(
+    filter: ScreenerFilter,
+    page: number,
+    pageSize: number,
+    cacheKey: string
+  ): Promise<ScreenerResult> {
     // Separate conditions into basic (snapshot) and indicator-based
     const basicConditions = filter.conditions.filter(c => 
       (BASIC_FIELDS as readonly string[]).includes(c.field)

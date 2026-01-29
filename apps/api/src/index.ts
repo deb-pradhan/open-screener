@@ -8,10 +8,13 @@ import { serveStatic } from 'hono/bun';
 import { tickersRouter } from './routes/tickers';
 import { screenerRouter } from './routes/screener';
 import { indicatorsRouter } from './routes/indicators';
+import { syncRouter } from './routes/sync';
 import { createWSHandler, type WSData } from './routes/websocket';
+import { scheduler } from './services/scheduler';
 
 const app = new Hono();
 const isProduction = process.env.NODE_ENV === 'production';
+const hasDatabase = !!process.env.DATABASE_URL;
 
 // Middleware
 app.use('*', logger());
@@ -30,6 +33,7 @@ app.get('/health', (c) => {
     status: 'ok', 
     timestamp: Date.now(),
     environment: process.env.NODE_ENV || 'development',
+    database: hasDatabase ? 'connected' : 'not configured',
   });
 });
 
@@ -37,6 +41,7 @@ app.get('/health', (c) => {
 app.route('/api/tickers', tickersRouter);
 app.route('/api/screener', screenerRouter);
 app.route('/api/indicators', indicatorsRouter);
+app.route('/api/sync', syncRouter);
 
 // Serve static files in production
 if (isProduction) {
@@ -78,3 +83,13 @@ const server = Bun.serve<WSData>({
 });
 
 console.log(`Server running at http://localhost:${server.port}`);
+
+// Start scheduler if database is configured and in production
+if (hasDatabase && isProduction) {
+  scheduler.start();
+  console.log('Data sync scheduler started');
+} else if (hasDatabase) {
+  console.log('Scheduler disabled in development (trigger syncs manually via /api/sync)');
+} else {
+  console.log('No database configured - using API-only mode');
+}
