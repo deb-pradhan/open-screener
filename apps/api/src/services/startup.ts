@@ -230,6 +230,26 @@ export class StartupService {
   }
 
   /**
+   * Check if indicators are populated
+   */
+  private async hasIndicatorData(): Promise<boolean> {
+    try {
+      const [result] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(latestSnapshot)
+        .where(sql`${latestSnapshot.sma200} IS NOT NULL`);
+      
+      const count = Number(result?.count || 0);
+      console.log(`📊 Stocks with indicator data: ${count}`);
+      
+      // Consider indicators populated if at least 100 stocks have SMA200
+      return count >= 100;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Run initial data sync
    */
   private async runInitialSync(): Promise<void> {
@@ -240,11 +260,29 @@ export class StartupService {
       const result = await dataSyncService.syncHourlySnapshot();
       console.log(`✅ Initial sync complete: ${result.processed} stocks loaded`);
       
-      // Note: Daily sync with indicators will run at scheduled time
-      // or can be triggered manually via /api/sync/daily
+      // Check if we need indicator data
+      const hasIndicators = await this.hasIndicatorData();
+      if (!hasIndicators) {
+        console.log('📊 No indicator data found - triggering indicator sync in background...');
+        // Run daily sync in background (don't await - it takes a while)
+        this.syncIndicatorsInBackground();
+      }
     } catch (error) {
       console.error('❌ Initial sync failed:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Sync indicators in background (non-blocking)
+   */
+  private async syncIndicatorsInBackground(): Promise<void> {
+    try {
+      console.log('🔄 Background indicator sync starting...');
+      const result = await dataSyncService.syncDailyData();
+      console.log(`✅ Background indicator sync complete: ${result.processed} stocks with indicators`);
+    } catch (error) {
+      console.error('❌ Background indicator sync failed:', error);
     }
   }
 }

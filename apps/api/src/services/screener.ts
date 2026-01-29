@@ -208,6 +208,13 @@ export class ScreenerService {
       try {
         const result = await this.runScreenerFromDB(filter, page, pageSize);
         
+        // If database returned 0 results and this preset needs indicators,
+        // fall back to API mode (indicators might not be synced yet)
+        if (result.total === 0 && this.presetNeedsIndicators(filter.id)) {
+          console.log(`Preset ${filter.id} returned 0 results from DB, falling back to API...`);
+          return this.runScreenerFromAPI(filter, page, pageSize, cacheKey);
+        }
+        
         // Cache results
         try {
           await redis.setex(cacheKey, REDIS_TTL.SCREENER_RESULTS, JSON.stringify(result));
