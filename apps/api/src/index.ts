@@ -11,6 +11,7 @@ import { indicatorsRouter } from './routes/indicators';
 import { syncRouter } from './routes/sync';
 import { createWSHandler, type WSData } from './routes/websocket';
 import { scheduler } from './services/scheduler';
+import { startupService } from './services/startup';
 
 const app = new Hono();
 const isProduction = process.env.NODE_ENV === 'production';
@@ -84,12 +85,19 @@ const server = Bun.serve<WSData>({
 
 console.log(`Server running at http://localhost:${server.port}`);
 
-// Start scheduler if database is configured and in production
-if (hasDatabase && isProduction) {
-  scheduler.start();
-  console.log('Data sync scheduler started');
-} else if (hasDatabase) {
-  console.log('Scheduler disabled in development (trigger syncs manually via /api/sync)');
+// Run startup initialization (auto-creates tables, syncs initial data)
+if (hasDatabase) {
+  startupService.initialize().then(() => {
+    // Start scheduler after initialization
+    if (isProduction) {
+      scheduler.start();
+      console.log('Data sync scheduler started');
+    } else {
+      console.log('Scheduler disabled in development (trigger syncs manually via /api/sync)');
+    }
+  }).catch(error => {
+    console.error('Startup failed, continuing in degraded mode:', error);
+  });
 } else {
   console.log('No database configured - using API-only mode');
 }
