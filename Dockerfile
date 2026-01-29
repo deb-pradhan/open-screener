@@ -11,14 +11,13 @@ WORKDIR /app
 # ============================================
 FROM base AS deps
 
-# Copy package files
-COPY package.json bun.lock ./
+# Copy package files only (no lockfile - let bun generate fresh)
+COPY package.json ./
 COPY apps/api/package.json ./apps/api/
 COPY apps/web/package.json ./apps/web/
 COPY packages/shared/package.json ./packages/shared/
 
-# Install all dependencies
-ENV CI=false
+# Install all dependencies (generates fresh lockfile)
 RUN bun install
 
 # ============================================
@@ -62,13 +61,12 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3001
 
-# Copy package files for workspace resolution
-COPY package.json bun.lock ./
+# Copy package files (no lockfile)
+COPY package.json ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/shared/package.json ./packages/shared/
 
 # Install production dependencies only
-ENV CI=false
 RUN bun install --production
 
 # Copy shared package (needed at runtime for types)
