@@ -99,6 +99,27 @@ export function TickerHeader({ snapshot, company }: TickerHeaderProps) {
           <QuickStat label="LOW" value={formatPrice(snapshot.low || 0)} />
           <QuickStat label="VOLUME" value={formatNumber(snapshot.volume, 0)} />
         </div>
+
+        {/* Extended stats row - 52 week range */}
+        {(snapshot.fiftyTwoWeekLow || snapshot.fiftyTwoWeekHigh || snapshot.averageVolume || snapshot.beta) && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-3 pt-3 border-t border-border-element">
+            {snapshot.fiftyTwoWeekLow && snapshot.fiftyTwoWeekHigh && (
+              <QuickStat 
+                label="52W RANGE" 
+                value={`${formatPrice(snapshot.fiftyTwoWeekLow)} - ${formatPrice(snapshot.fiftyTwoWeekHigh)}`} 
+              />
+            )}
+            {snapshot.averageVolume && (
+              <QuickStat label="AVG VOLUME" value={formatNumber(snapshot.averageVolume, 0)} />
+            )}
+            {snapshot.peRatio && (
+              <QuickStat label="P/E (TTM)" value={snapshot.peRatio.toFixed(2)} />
+            )}
+            {snapshot.beta && (
+              <QuickStat label="BETA" value={snapshot.beta.toFixed(2)} />
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

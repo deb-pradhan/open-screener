@@ -15,6 +15,7 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:3001',
         changeOrigin: true,
+        timeout: 60000, // 60 second timeout for API requests
       },
       '/ws': {
         target: 'ws://localhost:3001',

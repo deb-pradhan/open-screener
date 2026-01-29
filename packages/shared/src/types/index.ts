@@ -31,11 +31,23 @@ export interface CompanyDetails {
   address?: CompanyAddress;
   sicCode?: string;
   sicDescription?: string;
+  industry?: string;
+  industryKey?: string;
+  sector?: string;
+  sectorKey?: string;
   totalEmployees?: number;
   listDate?: string;
   delistDate?: string;
   marketCap?: number;
   sharesOutstanding?: number;
+  // Company officers
+  companyOfficers?: CompanyOfficer[];
+  // Risk scores (1-10, lower is better)
+  auditRisk?: number;
+  boardRisk?: number;
+  compensationRisk?: number;
+  shareHolderRightsRisk?: number;
+  overallRisk?: number;
   lastSyncedAt?: string;
 }
 
@@ -132,13 +144,16 @@ export interface FinancialRatios {
   symbol: string;
   // Valuation
   peRatio?: number;
+  forwardPE?: number;
   pbRatio?: number;
   psRatio?: number;
   evToEbitda?: number;
+  evToRevenue?: number;
   pegRatio?: number;
   // Profitability
   grossMargin?: number;
   operatingMargin?: number;
+  ebitdaMargin?: number;
   netMargin?: number;
   roe?: number;
   roa?: number;
@@ -149,6 +164,22 @@ export interface FinancialRatios {
   // Leverage
   debtToEquity?: number;
   interestCoverage?: number;
+  // Growth
+  revenueGrowth?: number;
+  earningsGrowth?: number;
+  revenueGrowthQuarterly?: number;
+  earningsGrowthQuarterly?: number;
+  // Cash Flow
+  freeCashFlow?: number;
+  operatingCashFlow?: number;
+  // Analyst targets
+  targetHighPrice?: number;
+  targetLowPrice?: number;
+  targetMeanPrice?: number;
+  targetMedianPrice?: number;
+  numberOfAnalysts?: number;
+  recommendationKey?: string; // 'buy', 'hold', 'sell', etc.
+  recommendationMean?: number; // 1-5 scale
   // Metadata
   lastSyncedAt?: string;
 }
@@ -235,6 +266,12 @@ export interface TickerCoreData {
   snapshot: LatestSnapshotData | null;
   company: CompanyDetails | null;
   ratios: FinancialRatios | null;
+  earnings?: EarningsData | null;
+  recommendations?: AnalystRecommendation[] | null;
+  upgradeDowngrades?: UpgradeDowngrade[] | null;
+  holdersBreakdown?: HoldersBreakdown | null;
+  insiderTransactions?: InsiderTransaction[] | null;
+  institutionalHolders?: InstitutionalHolder[] | null;
 }
 
 export interface LatestSnapshotData {
@@ -248,7 +285,18 @@ export interface LatestSnapshotData {
   volume: number;
   vwap?: number;
   changePercent?: number;
-  // Technical indicators
+  previousClose?: number;
+  // 52-week range
+  fiftyTwoWeekHigh?: number;
+  fiftyTwoWeekLow?: number;
+  fiftyTwoWeekChange?: number;
+  // Moving averages (from Yahoo)
+  fiftyDayAverage?: number;
+  twoHundredDayAverage?: number;
+  // Volume
+  averageVolume?: number;
+  averageVolume10Day?: number;
+  // Technical indicators (calculated)
   rsi14?: number;
   sma20?: number;
   sma50?: number;
@@ -260,10 +308,37 @@ export interface LatestSnapshotData {
   macdHistogram?: number;
   // Fundamental data
   marketCap?: number;
+  enterpriseValue?: number;
   peRatio?: number;
+  forwardPE?: number;
   pbRatio?: number;
+  psRatio?: number;
   dividendYield?: number;
+  beta?: number;
+  // EPS
+  trailingEps?: number;
+  forwardEps?: number;
+  // Shares
+  sharesOutstanding?: number;
+  floatShares?: number;
+  sharesShort?: number;
+  shortRatio?: number;
+  shortPercentOfFloat?: number;
+  // Cash & Debt
+  totalCash?: number;
+  totalCashPerShare?: number;
+  totalDebt?: number;
+  bookValue?: number;
+  // Revenue & Income
+  totalRevenue?: number;
+  revenuePerShare?: number;
+  ebitda?: number;
+  // Margins
   grossMargin?: number;
+  operatingMargin?: number;
+  ebitdaMargin?: number;
+  netMargin?: number;
+  // Growth
   revenueGrowthYoy?: number;
   epsGrowthYoy?: number;
   debtToEquity?: number;
@@ -272,6 +347,98 @@ export interface LatestSnapshotData {
   financialsLastSync?: string;
   ratiosLastSync?: string;
   updatedAt?: string;
+}
+
+// ============================================
+// Earnings Data
+// ============================================
+export interface EarningsEstimate {
+  avg?: number;
+  low?: number;
+  high?: number;
+  numberOfAnalysts?: number;
+}
+
+export interface EarningsTrendPeriod {
+  period: string; // '0q', '+1q', '0y', '+1y'
+  endDate?: string;
+  growth?: number;
+  earningsEstimate?: EarningsEstimate;
+  revenueEstimate?: EarningsEstimate;
+}
+
+export interface EarningsHistoryItem {
+  quarter: string;
+  epsActual?: number;
+  epsEstimate?: number;
+  epsDifference?: number;
+  surprisePercent?: number;
+}
+
+export interface EarningsData {
+  earningsDate?: string;
+  earningsDateStart?: string;
+  earningsDateEnd?: string;
+  isEarningsDateEstimate?: boolean;
+  earningsHistory?: EarningsHistoryItem[];
+  earningsTrend?: EarningsTrendPeriod[];
+}
+
+// ============================================
+// Analyst Data
+// ============================================
+export interface AnalystRecommendation {
+  period: string;
+  strongBuy: number;
+  buy: number;
+  hold: number;
+  sell: number;
+  strongSell: number;
+}
+
+export interface UpgradeDowngrade {
+  date: string;
+  firm: string;
+  toGrade: string;
+  fromGrade?: string;
+  action: string; // 'up', 'down', 'main', 'init', 'reit'
+}
+
+// ============================================
+// Holders Data
+// ============================================
+export interface HoldersBreakdown {
+  insidersPercentHeld?: number;
+  institutionsPercentHeld?: number;
+  institutionsFloatPercentHeld?: number;
+  institutionsCount?: number;
+}
+
+export interface InsiderTransaction {
+  shares: number;
+  value?: number;
+  filerName: string;
+  filerRelation: string;
+  transactionText: string;
+  startDate: string;
+}
+
+export interface InstitutionalHolder {
+  holder: string;
+  shares: number;
+  dateReported: string;
+  pctHeld: number;
+  value: number;
+}
+
+// ============================================
+// Company Officers
+// ============================================
+export interface CompanyOfficer {
+  name?: string;
+  title?: string;
+  age?: number;
+  totalPay?: number;
 }
 
 export interface DataFreshness {
@@ -284,7 +451,15 @@ export interface TickerDetailResponse {
   success: boolean;
   data?: TickerCoreData;
   meta?: {
-    freshness: DataFreshness;
+    freshness?: DataFreshness;
+    source?: string;
+    dataSources?: {
+      price?: string;
+      details?: string;
+      ratios?: string;
+      earnings?: string;
+      analysts?: string;
+    };
     staleThresholdMs: number;
   };
   error?: string;

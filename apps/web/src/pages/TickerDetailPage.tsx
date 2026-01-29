@@ -57,7 +57,17 @@ export default function TickerDetailPage() {
     );
   }
 
-  const { snapshot, company, ratios } = coreData.data!;
+  const { 
+    snapshot, 
+    company, 
+    ratios, 
+    earnings, 
+    recommendations, 
+    upgradeDowngrades,
+    holdersBreakdown,
+    insiderTransactions,
+    institutionalHolders,
+  } = coreData.data!;
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -80,6 +90,12 @@ export default function TickerDetailPage() {
               snapshot={snapshot}
               ratios={ratios}
               company={company}
+              earnings={earnings}
+              recommendations={recommendations}
+              upgradeDowngrades={upgradeDowngrades}
+              holdersBreakdown={holdersBreakdown}
+              insiderTransactions={insiderTransactions}
+              institutionalHolders={institutionalHolders}
             />
           </SectionErrorBoundary>
         </TabsContent>

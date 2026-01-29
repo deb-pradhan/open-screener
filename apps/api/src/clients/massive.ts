@@ -286,6 +286,12 @@ export class MassiveClient {
           continue;
         }
         
+        // Don't retry or trigger circuit breaker for auth errors (403)
+        if (error instanceof APIError && (error.statusCode === 403 || error.statusCode === 401)) {
+          // Auth errors are not transient - throw immediately without retry
+          throw error;
+        }
+        
         this.failureCount++;
         if (this.failureCount >= this.failureThreshold) {
           this.circuitState = 'open';
@@ -297,7 +303,8 @@ export class MassiveClient {
         
         // Exponential backoff for other errors
         const backoff = Math.pow(2, attempt) * 500;
-        console.warn(`Request failed, retrying in ${backoff}ms...`);
+        const errMsg = error instanceof Error ? error.message : String(error);
+        console.warn(`Request failed (${errMsg}), retrying in ${backoff}ms...`);
         await this.sleep(backoff);
       }
     }
@@ -386,11 +393,11 @@ export class MassiveClient {
   }
 
   async getTickerSnapshot(symbol: string): Promise<TickerSnapshot | null> {
-    const response = await this.requestWithRetry<MassiveAPIResponse<{ ticker: TickerSnapshot }>>(
+    const response = await this.requestWithRetry<{ ticker: TickerSnapshot; status: string }>(
       `/v2/snapshot/locale/us/markets/stocks/tickers/${symbol}`
     );
 
-    return response?.results?.ticker || null;
+    return response?.ticker || null;
   }
 
   // ============================================

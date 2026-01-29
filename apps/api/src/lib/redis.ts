@@ -82,6 +82,14 @@ export const redis = {
       return [];
     }
   },
+  async del(key: string): Promise<void> {
+    if (!redisClient || !redisAvailable) return;
+    try {
+      await redisClient.del(key);
+    } catch {
+      // Ignore
+    }
+  },
 };
 
 // Key prefixes for organization
@@ -90,6 +98,14 @@ export const REDIS_KEYS = {
   SCREENER_RESULTS: 'screener:', // screener:{filterId}
   TICKER_SNAPSHOT: 'snapshot:', // snapshot:{symbol}
   RATE_LIMIT: 'ratelimit:', // ratelimit:{ip}
+  // Yahoo Finance specific
+  YAHOO_TICKER: 'yahoo:ticker:', // yahoo:ticker:{symbol}
+  YAHOO_QUOTE: 'yahoo:quote:', // yahoo:quote:{symbol}
+  YAHOO_PROFILE: 'yahoo:profile:', // yahoo:profile:{symbol}
+  YAHOO_STATS: 'yahoo:stats:', // yahoo:stats:{symbol}
+  YAHOO_EARNINGS: 'yahoo:earnings:', // yahoo:earnings:{symbol}
+  YAHOO_ANALYSTS: 'yahoo:analysts:', // yahoo:analysts:{symbol}
+  YAHOO_HOLDERS: 'yahoo:holders:', // yahoo:holders:{symbol}
 } as const;
 
 // TTL values in seconds
@@ -97,4 +113,12 @@ export const REDIS_TTL = {
   INDICATORS: 300, // 5 minutes
   SNAPSHOT: 60, // 1 minute
   SCREENER_RESULTS: 30, // 30 seconds
+  // Yahoo Finance TTLs
+  YAHOO_QUOTE: 60, // 1 minute - real-time price data
+  YAHOO_PROFILE: 86400, // 24 hours - company info rarely changes
+  YAHOO_STATS: 3600, // 1 hour - financial stats
+  YAHOO_EARNINGS: 3600, // 1 hour - earnings data
+  YAHOO_ANALYSTS: 3600, // 1 hour - analyst recommendations
+  YAHOO_HOLDERS: 86400, // 24 hours - institutional holdings
+  YAHOO_TICKER_FULL: 300, // 5 minutes - full ticker data bundle
 } as const;

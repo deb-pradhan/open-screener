@@ -167,12 +167,27 @@ export const companyDetails = pgTable('company_details', {
   address: jsonb('address'), // { address1, city, state, postalCode, country }
   sicCode: text('sic_code'),
   sicDescription: text('sic_description'),
+  // Industry/Sector from Yahoo
+  industry: text('industry'),
+  industryKey: text('industry_key'),
+  sector: text('sector'),
+  sectorKey: text('sector_key'),
   totalEmployees: integer('total_employees'),
   listDate: date('list_date'),
   delistDate: date('delist_date'),
   marketCap: real('market_cap'),
   sharesOutstanding: real('shares_outstanding'),
+  // Company officers (JSONB array)
+  companyOfficers: jsonb('company_officers'), // Array of { name, title, age, totalPay }
+  // Risk scores (1-10 scale, lower is better)
+  auditRisk: integer('audit_risk'),
+  boardRisk: integer('board_risk'),
+  compensationRisk: integer('compensation_risk'),
+  shareholderRightsRisk: integer('shareholder_rights_risk'),
+  overallRisk: integer('overall_risk'),
+  // Sync tracking
   lastSyncedAt: timestamp('last_synced_at'),
+  yahooSyncedAt: timestamp('yahoo_synced_at'),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
 
@@ -216,13 +231,16 @@ export const financialRatios = pgTable('financial_ratios', {
   symbol: text('symbol').primaryKey().references(() => tickers.symbol, { onDelete: 'cascade' }),
   // Valuation
   peRatio: real('pe_ratio'),
+  forwardPe: real('forward_pe'),
   pbRatio: real('pb_ratio'),
   psRatio: real('ps_ratio'),
   evToEbitda: real('ev_to_ebitda'),
+  evToRevenue: real('ev_to_revenue'),
   pegRatio: real('peg_ratio'),
   // Profitability
   grossMargin: real('gross_margin'),
   operatingMargin: real('operating_margin'),
+  ebitdaMargin: real('ebitda_margin'),
   netMargin: real('net_margin'),
   roe: real('roe'),
   roa: real('roa'),
@@ -233,12 +251,30 @@ export const financialRatios = pgTable('financial_ratios', {
   // Leverage
   debtToEquity: real('debt_to_equity'),
   interestCoverage: real('interest_coverage'),
+  // Growth rates (percentage)
+  revenueGrowth: real('revenue_growth'),
+  earningsGrowth: real('earnings_growth'),
+  revenueGrowthQuarterly: real('revenue_growth_quarterly'),
+  earningsGrowthQuarterly: real('earnings_growth_quarterly'),
+  // Cash Flow
+  freeCashFlow: real('free_cash_flow'),
+  operatingCashFlow: real('operating_cash_flow'),
+  // Analyst Targets
+  targetHighPrice: real('target_high_price'),
+  targetLowPrice: real('target_low_price'),
+  targetMeanPrice: real('target_mean_price'),
+  targetMedianPrice: real('target_median_price'),
+  numberOfAnalysts: integer('number_of_analysts'),
+  recommendationKey: text('recommendation_key'), // 'buy', 'hold', 'sell', etc.
+  recommendationMean: real('recommendation_mean'), // 1-5 scale
   // Metadata
   lastSyncedAt: timestamp('last_synced_at'),
+  yahooSyncedAt: timestamp('yahoo_synced_at'),
   updatedAt: timestamp('updated_at').defaultNow(),
 }, (table) => ({
   peIdx: index('ratios_pe_idx').on(table.peRatio),
   marginIdx: index('ratios_margin_idx').on(table.grossMargin),
+  targetIdx: index('ratios_target_idx').on(table.targetMeanPrice),
 }));
 
 // ============================================
@@ -306,6 +342,128 @@ export const newsTickers = pgTable('news_tickers', {
   symbolIdx: index('news_tickers_symbol_idx').on(table.symbol),
   articleIdx: index('news_tickers_article_idx').on(table.articleId),
 }));
+
+// ============================================
+// Earnings History - Historical EPS data from Yahoo
+// ============================================
+export const earningsHistory = pgTable('earnings_history', {
+  id: serial('id').primaryKey(),
+  symbol: text('symbol').notNull().references(() => tickers.symbol, { onDelete: 'cascade' }),
+  quarter: text('quarter').notNull(), // e.g., 'Q4 2024'
+  epsActual: real('eps_actual'),
+  epsEstimate: real('eps_estimate'),
+  epsDifference: real('eps_difference'),
+  surprisePercent: real('surprise_percent'),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  symbolQuarterIdx: uniqueIndex('earnings_history_symbol_quarter_idx').on(table.symbol, table.quarter),
+  symbolIdx: index('earnings_history_symbol_idx').on(table.symbol),
+}));
+
+// ============================================
+// Analyst Recommendations - Buy/Hold/Sell breakdown
+// ============================================
+export const analystRecommendations = pgTable('analyst_recommendations', {
+  id: serial('id').primaryKey(),
+  symbol: text('symbol').notNull().references(() => tickers.symbol, { onDelete: 'cascade' }),
+  period: text('period').notNull(), // e.g., '0m', '-1m', '-2m', '-3m'
+  strongBuy: integer('strong_buy').default(0),
+  buy: integer('buy').default(0),
+  hold: integer('hold').default(0),
+  sell: integer('sell').default(0),
+  strongSell: integer('strong_sell').default(0),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  symbolPeriodIdx: uniqueIndex('analyst_rec_symbol_period_idx').on(table.symbol, table.period),
+  symbolIdx: index('analyst_rec_symbol_idx').on(table.symbol),
+}));
+
+// ============================================
+// Upgrade/Downgrades - Analyst rating changes
+// ============================================
+export const upgradeDowngrades = pgTable('upgrade_downgrades', {
+  id: serial('id').primaryKey(),
+  symbol: text('symbol').notNull().references(() => tickers.symbol, { onDelete: 'cascade' }),
+  gradeDate: timestamp('grade_date').notNull(),
+  firm: text('firm').notNull(),
+  toGrade: text('to_grade').notNull(),
+  fromGrade: text('from_grade'),
+  action: text('action').notNull(), // 'up', 'down', 'main', 'init', 'reit'
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  symbolDateIdx: index('upgrade_downgrade_symbol_date_idx').on(table.symbol, table.gradeDate),
+  symbolIdx: index('upgrade_downgrade_symbol_idx').on(table.symbol),
+  dateIdx: index('upgrade_downgrade_date_idx').on(table.gradeDate),
+}));
+
+// ============================================
+// Holders Breakdown - Insider/Institution ownership percentages
+// ============================================
+export const holdersBreakdown = pgTable('holders_breakdown', {
+  symbol: text('symbol').primaryKey().references(() => tickers.symbol, { onDelete: 'cascade' }),
+  insidersPercentHeld: real('insiders_percent_held'),
+  institutionsPercentHeld: real('institutions_percent_held'),
+  institutionsFloatPercentHeld: real('institutions_float_percent_held'),
+  institutionsCount: integer('institutions_count'),
+  lastSyncedAt: timestamp('last_synced_at'),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// ============================================
+// Institutional Holders - Top institutional holders
+// ============================================
+export const institutionalHolders = pgTable('institutional_holders', {
+  id: serial('id').primaryKey(),
+  symbol: text('symbol').notNull().references(() => tickers.symbol, { onDelete: 'cascade' }),
+  holderName: text('holder_name').notNull(),
+  shares: real('shares').notNull(),
+  percentHeld: real('percent_held'),
+  value: real('value'),
+  dateReported: date('date_reported'),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  symbolHolderIdx: uniqueIndex('inst_holder_symbol_holder_idx').on(table.symbol, table.holderName),
+  symbolIdx: index('inst_holder_symbol_idx').on(table.symbol),
+}));
+
+// ============================================
+// Insider Transactions - Recent insider trades
+// ============================================
+export const insiderTransactions = pgTable('insider_transactions', {
+  id: serial('id').primaryKey(),
+  symbol: text('symbol').notNull().references(() => tickers.symbol, { onDelete: 'cascade' }),
+  filerName: text('filer_name').notNull(),
+  filerRelation: text('filer_relation'),
+  transactionText: text('transaction_text'),
+  shares: real('shares').notNull(),
+  value: real('value'),
+  transactionDate: date('transaction_date').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  symbolDateIdx: index('insider_tx_symbol_date_idx').on(table.symbol, table.transactionDate),
+  symbolIdx: index('insider_tx_symbol_idx').on(table.symbol),
+}));
+
+// ============================================
+// Yahoo Sync Cache - Track when Yahoo data was last synced per symbol
+// ============================================
+export const yahooSyncCache = pgTable('yahoo_sync_cache', {
+  symbol: text('symbol').primaryKey().references(() => tickers.symbol, { onDelete: 'cascade' }),
+  // Track individual data types
+  quoteSyncedAt: timestamp('quote_synced_at'),
+  profileSyncedAt: timestamp('profile_synced_at'),
+  statsSyncedAt: timestamp('stats_synced_at'),
+  earningsSyncedAt: timestamp('earnings_synced_at'),
+  analystsSyncedAt: timestamp('analysts_synced_at'),
+  holdersSyncedAt: timestamp('holders_synced_at'),
+  // Full data bundle
+  fullDataSyncedAt: timestamp('full_data_synced_at'),
+  // Error tracking
+  lastError: text('last_error'),
+  errorCount: integer('error_count').default(0),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
 
 // ============================================
 // Sync Status - Per-symbol sync tracking for resumable operations
@@ -401,3 +559,24 @@ export type SyncLock = typeof syncLocks.$inferSelect;
 
 export type NewSyncCheckpoint = typeof syncCheckpoints.$inferInsert;
 export type SyncCheckpoint = typeof syncCheckpoints.$inferSelect;
+
+export type NewEarningsHistory = typeof earningsHistory.$inferInsert;
+export type EarningsHistoryRecord = typeof earningsHistory.$inferSelect;
+
+export type NewAnalystRecommendation = typeof analystRecommendations.$inferInsert;
+export type AnalystRecommendationRecord = typeof analystRecommendations.$inferSelect;
+
+export type NewUpgradeDowngrade = typeof upgradeDowngrades.$inferInsert;
+export type UpgradeDowngradeRecord = typeof upgradeDowngrades.$inferSelect;
+
+export type NewHoldersBreakdown = typeof holdersBreakdown.$inferInsert;
+export type HoldersBreakdownRecord = typeof holdersBreakdown.$inferSelect;
+
+export type NewInstitutionalHolder = typeof institutionalHolders.$inferInsert;
+export type InstitutionalHolderRecord = typeof institutionalHolders.$inferSelect;
+
+export type NewInsiderTransaction = typeof insiderTransactions.$inferInsert;
+export type InsiderTransactionRecord = typeof insiderTransactions.$inferSelect;
+
+export type NewYahooSyncCache = typeof yahooSyncCache.$inferInsert;
+export type YahooSyncCacheRecord = typeof yahooSyncCache.$inferSelect;

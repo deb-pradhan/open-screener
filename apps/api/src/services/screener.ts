@@ -39,6 +39,14 @@ export class ScreenerService {
     }
   }
 
+  // Disable database after connection failure
+  private disableDatabase() {
+    if (this.useDatabase) {
+      console.log('ScreenerService: Disabling database queries after connection failure');
+      this.useDatabase = false;
+    }
+  }
+
   // ============================================
   // Database-powered screener (preferred)
   // ============================================
@@ -247,6 +255,8 @@ export class ScreenerService {
         return result;
       } catch (dbError) {
         console.error('Database query failed, falling back to API:', dbError);
+        // Disable database for future requests to avoid repeated failures
+        this.disableDatabase();
         // Fall through to API-based screener
       }
     }
@@ -285,25 +295,32 @@ export class ScreenerService {
     
     if (needsIndicators) {
       // Sort by volume to prioritize liquid stocks, take top candidates
-      const maxCandidates = 500; // Limit API calls
+      // Use smaller limit to avoid API timeouts and rate limits
+      const maxCandidates = 100; // Reduced from 500 to improve API response time
       filtered = this.sortStocks(filtered, 'volume', 'desc').slice(0, maxCandidates);
       
-      console.log(`Fetching indicators for ${filtered.length} candidates...`);
+      console.log(`Fetching indicators for ${filtered.length} candidates (API fallback mode)...`);
       
-      // Fetch indicators for candidates
-      filtered = await this.enrichStocksWithIndicators(filtered);
-      
-      // Second pass: filter by indicator conditions
-      if (indicatorConditions.length > 0) {
-        filtered = filtered.filter((stock) => 
-          this.matchesFilter(stock, indicatorConditions)
-        );
+      try {
+        // Fetch indicators for candidates
+        filtered = await this.enrichStocksWithIndicators(filtered);
+        
+        // Second pass: filter by indicator conditions
+        if (indicatorConditions.length > 0) {
+          filtered = filtered.filter((stock) => 
+            this.matchesFilter(stock, indicatorConditions)
+          );
+        }
+        
+        // Apply special preset logic (price vs SMA comparisons, etc.)
+        filtered = this.applyPresetLogic(filter.id, filtered);
+        
+        console.log(`After indicator filter: ${filtered.length} stocks`);
+      } catch (indicatorError) {
+        console.error('Failed to fetch indicators:', indicatorError);
+        // Return filtered results without indicator data rather than failing
+        console.log('Returning results without indicator filtering');
       }
-      
-      // Apply special preset logic (price vs SMA comparisons, etc.)
-      filtered = this.applyPresetLogic(filter.id, filtered);
-      
-      console.log(`After indicator filter: ${filtered.length} stocks`);
     }
 
     // Final sort
