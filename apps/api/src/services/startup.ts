@@ -127,6 +127,9 @@ export class StartupService {
     console.log('🔧 Ensuring data integrity before migrations...');
     
     try {
+      // First, add missing columns to existing tables
+      await this.addMissingColumns();
+      
       // Check if latest_snapshot exists and has data
       const snapshotExists = await db.execute(sql`
         SELECT EXISTS (
@@ -176,6 +179,116 @@ export class StartupService {
         return;
       }
       console.warn('⚠️  Data integrity check failed (non-fatal):', error.message);
+    }
+  }
+
+  /**
+   * Add missing columns to existing tables
+   * This handles schema drift when tables exist but are missing new columns
+   */
+  private async addMissingColumns(): Promise<void> {
+    console.log('🔧 Checking for missing columns in existing tables...');
+    
+    // Define columns that should exist in latest_snapshot
+    // Format: [column_name, column_type, default_value]
+    const latestSnapshotColumns: [string, string][] = [
+      ['fifty_two_week_high', 'real'],
+      ['fifty_two_week_low', 'real'],
+      ['fifty_day_average', 'real'],
+      ['two_hundred_day_average', 'real'],
+      ['average_volume', 'real'],
+      ['beta', 'real'],
+      ['market_cap', 'real'],
+      ['pe_ratio', 'real'],
+      ['forward_pe', 'real'],
+      ['pb_ratio', 'real'],
+      ['ps_ratio', 'real'],
+      ['peg_ratio', 'real'],
+      ['ev_to_ebitda', 'real'],
+      ['ev_to_revenue', 'real'],
+      ['gross_margin', 'real'],
+      ['operating_margin', 'real'],
+      ['ebitda_margin', 'real'],
+      ['net_margin', 'real'],
+      ['roe', 'real'],
+      ['roa', 'real'],
+      ['revenue_growth_yoy', 'real'],
+      ['revenue_growth_quarterly', 'real'],
+      ['eps_growth_yoy', 'real'],
+      ['earnings_growth_quarterly', 'real'],
+      ['debt_to_equity', 'real'],
+      ['current_ratio', 'real'],
+      ['quick_ratio', 'real'],
+      ['dividend_yield', 'real'],
+      ['short_ratio', 'real'],
+      ['short_percent_of_float', 'real'],
+      ['target_mean_price', 'real'],
+      ['target_high_price', 'real'],
+      ['target_low_price', 'real'],
+      ['number_of_analysts', 'integer'],
+      ['recommendation_mean', 'real'],
+      ['insiders_percent_held', 'real'],
+      ['institutions_percent_held', 'real'],
+      ['financials_last_sync', 'timestamp'],
+      ['ratios_last_sync', 'timestamp'],
+      ['yahoo_synced_at', 'timestamp'],
+    ];
+    
+    try {
+      // Check if latest_snapshot table exists
+      const tableExists = await db.execute(sql`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_name = 'latest_snapshot'
+        ) as exists
+      `);
+      
+      if (!tableExists[0]?.exists) {
+        console.log('📊 latest_snapshot table does not exist - will be created by migration');
+        return;
+      }
+
+      // Get existing columns
+      const existingColumns = await db.execute(sql`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'latest_snapshot'
+      `);
+      
+      const existingColumnNames = new Set(
+        existingColumns.map((row: any) => row.column_name)
+      );
+      
+      // Add missing columns
+      let addedCount = 0;
+      for (const [columnName, columnType] of latestSnapshotColumns) {
+        if (!existingColumnNames.has(columnName)) {
+          try {
+            await db.execute(sql.raw(`
+              ALTER TABLE latest_snapshot 
+              ADD COLUMN IF NOT EXISTS "${columnName}" ${columnType}
+            `));
+            addedCount++;
+          } catch (e: any) {
+            // Column might already exist, ignore
+            if (!e.message?.includes('already exists')) {
+              console.warn(`⚠️  Failed to add column ${columnName}:`, e.message);
+            }
+          }
+        }
+      }
+      
+      if (addedCount > 0) {
+        console.log(`✅ Added ${addedCount} missing columns to latest_snapshot`);
+      } else {
+        console.log('✅ All columns present in latest_snapshot');
+      }
+    } catch (error: any) {
+      if (error.code === '42P01') {
+        console.log('📊 Table does not exist yet - skipping column check');
+        return;
+      }
+      console.warn('⚠️  Column check failed (non-fatal):', error.message);
     }
   }
 
