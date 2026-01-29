@@ -1073,6 +1073,18 @@ export class DataSyncService {
     const dayData = snapshot.day || snapshot.prevDay;
     
     if (!dayData) return;
+    
+    // Check if ticker exists to avoid FK violations
+    const [tickerExists] = await db
+      .select({ symbol: tickers.symbol })
+      .from(tickers)
+      .where(eq(tickers.symbol, symbol))
+      .limit(1);
+    
+    if (!tickerExists) {
+      console.warn(`Skipping ${symbol}: not in tickers table`);
+      return;
+    }
 
     await db.insert(dailyPrices)
       .values({
@@ -1183,8 +1195,16 @@ export class DataSyncService {
   private async upsertLatestSnapshots(snapshots: TickerSnapshot[]): Promise<void> {
     const today = new Date().toISOString().split('T')[0];
     
+    // Get valid symbols from tickers table to avoid FK violations
+    const snapshotSymbols = snapshots.map(s => s.ticker).filter(Boolean);
+    const validTickersResult = await db
+      .select({ symbol: tickers.symbol })
+      .from(tickers)
+      .where(sql`${tickers.symbol} = ANY(${snapshotSymbols})`);
+    const validSymbols = new Set(validTickersResult.map(t => t.symbol));
+    
     const values = snapshots
-      .filter(s => s.ticker && (s.day || s.prevDay))
+      .filter(s => s.ticker && (s.day || s.prevDay) && validSymbols.has(s.ticker))
       .map(snapshot => {
         const dayData = snapshot.day?.v ? snapshot.day : snapshot.prevDay;
         if (!dayData) return null;

@@ -2,25 +2,66 @@ import { Hono } from 'hono';
 import { db, schema, checkDbConnection } from '../db';
 import { eq, and, sql, desc } from 'drizzle-orm';
 import type { ApiResponse } from '@screener/shared';
+import { MassiveClient } from '../clients/massive';
 
 export const tickersRouter = new Hono();
+
+// Shared client instance for fallback searches
+const massiveClient = new MassiveClient();
 
 // Get all tickers with optional search
 tickersRouter.get('/', async (c) => {
   const search = c.req.query('search')?.trim().toUpperCase();
   const limit = Math.min(Number(c.req.query('limit')) || 100, 1000);
   const offset = Number(c.req.query('offset')) || 0;
-  const activeOnly = c.req.query('active') !== 'false';
 
   // Check database connection first
   const isConnected = await checkDbConnection();
+  
+  // If no DB connection, fall back to Polygon API for search
   if (!isConnected) {
-    const response: ApiResponse<null> = {
-      success: false,
-      error: 'Database not available',
-      timestamp: Date.now(),
-    };
-    return c.json(response, 503);
+    // Only allow search fallback, not full listing (would be too expensive)
+    if (!search || search.length < 1) {
+      const response: ApiResponse<[]> = {
+        success: true,
+        data: [],
+        timestamp: Date.now(),
+      };
+      return c.json(response);
+    }
+
+    try {
+      // Use Polygon API as fallback for search
+      const tickers = await massiveClient.getTickers({ 
+        search, 
+        limit: Math.min(limit, 20), // Limit API calls
+        active: true,
+      });
+
+      // Map to our expected format
+      const results = tickers.map(t => ({
+        symbol: t.ticker,
+        name: t.name,
+        price: null as number | null,
+        changePercent: null as number | null,
+        logoUrl: null as string | null,
+      }));
+
+      const response: ApiResponse<typeof results> = {
+        success: true,
+        data: results,
+        timestamp: Date.now(),
+      };
+      return c.json(response);
+    } catch (error) {
+      console.error('Polygon API fallback search error:', error);
+      const response: ApiResponse<null> = {
+        success: false,
+        error: 'Search temporarily unavailable',
+        timestamp: Date.now(),
+      };
+      return c.json(response, 503);
+    }
   }
 
   try {
