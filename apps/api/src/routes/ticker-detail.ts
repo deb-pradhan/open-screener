@@ -608,55 +608,95 @@ async function fetchTickerFromAPI(c: any, symbol: string) {
 // ============================================
 // GET /api/ticker/:symbol/financials
 // Query params: timeframe=quarterly|annual, limit=8
+// Fetches from DB first, falls back to Yahoo Finance (free, no API key)
 // ============================================
 app.get('/:symbol/financials', async (c) => {
-  const dbError = requireDb(c);
-  if (dbError) return dbError;
-  
   const symbol = c.req.param('symbol').toUpperCase();
-  const timeframe = c.req.query('timeframe') || 'quarterly';
+  const timeframe = (c.req.query('timeframe') || 'quarterly') as 'quarterly' | 'annual';
   const limit = Math.min(parseInt(c.req.query('limit') || '8'), 20);
   
-  if (!await validateSymbol(symbol)) {
-    return c.json({ success: false, error: 'Symbol not found', timestamp: Date.now() }, 404);
-  }
-  
   try {
-    const rows = await db.select()
-      .from(financialStatements)
-      .where(and(
-        eq(financialStatements.symbol, symbol),
-        eq(financialStatements.timeframe, timeframe)
-      ))
-      .orderBy(desc(financialStatements.periodEnd))
-      .limit(limit * 3); // Get 3x limit since we're grouping by type
+    let grouped = { income: [] as any[], balance: [] as any[], cashFlow: [] as any[] };
     
-    // Map DB rows to proper FinancialStatement type
-    const statements: FinancialStatement[] = rows.map(row => ({
-      id: row.id,
-      symbol: row.symbol,
-      statementType: row.statementType as StatementType,
-      timeframe: row.timeframe as Timeframe,
-      fiscalYear: row.fiscalYear,
-      fiscalQuarter: row.fiscalQuarter ?? undefined,
-      periodEnd: row.periodEnd,
-      filingDate: row.filingDate ?? undefined,
-      acceptedDate: row.acceptedDate?.toISOString(),
-      rawData: row.rawData as Record<string, unknown>,
-      revenue: row.revenue ?? undefined,
-      netIncome: row.netIncome ?? undefined,
-      eps: row.eps ?? undefined,
-      totalAssets: row.totalAssets ?? undefined,
-      totalLiabilities: row.totalLiabilities ?? undefined,
-      operatingCashFlow: row.operatingCashFlow ?? undefined,
-    }));
+    // Try DB first if connected
+    if (isDbConnected()) {
+      const rows = await db.select()
+        .from(financialStatements)
+        .where(and(
+          eq(financialStatements.symbol, symbol),
+          eq(financialStatements.timeframe, timeframe)
+        ))
+        .orderBy(desc(financialStatements.periodEnd))
+        .limit(limit * 3);
+      
+      if (rows.length > 0) {
+        const statements: FinancialStatement[] = rows.map(row => ({
+          id: row.id,
+          symbol: row.symbol,
+          statementType: row.statementType as StatementType,
+          timeframe: row.timeframe as Timeframe,
+          fiscalYear: row.fiscalYear,
+          fiscalQuarter: row.fiscalQuarter ?? undefined,
+          periodEnd: row.periodEnd,
+          filingDate: row.filingDate ?? undefined,
+          acceptedDate: row.acceptedDate?.toISOString(),
+          rawData: row.rawData as Record<string, unknown>,
+          revenue: row.revenue ?? undefined,
+          netIncome: row.netIncome ?? undefined,
+          eps: row.eps ?? undefined,
+          totalAssets: row.totalAssets ?? undefined,
+          totalLiabilities: row.totalLiabilities ?? undefined,
+          operatingCashFlow: row.operatingCashFlow ?? undefined,
+        }));
+        
+        grouped = {
+          income: statements.filter(s => s.statementType === 'income').slice(0, limit),
+          balance: statements.filter(s => s.statementType === 'balance').slice(0, limit),
+          cashFlow: statements.filter(s => s.statementType === 'cashflow').slice(0, limit),
+        };
+      }
+    }
     
-    // Group by statement type
-    const grouped = {
-      income: statements.filter(s => s.statementType === 'income').slice(0, limit),
-      balance: statements.filter(s => s.statementType === 'balance').slice(0, limit),
-      cashFlow: statements.filter(s => s.statementType === 'cashflow').slice(0, limit),
-    };
+    // Fallback to Yahoo Finance if DB is empty (free, no API key needed)
+    if (grouped.income.length === 0 && grouped.balance.length === 0 && grouped.cashFlow.length === 0) {
+      const yahooData = await yahooClient.getAllFinancials(symbol, timeframe, limit);
+      
+      grouped = {
+        income: yahooData.income.map((s, idx) => ({
+          id: idx,
+          symbol: s.symbol,
+          statementType: s.statementType,
+          timeframe: s.timeframe,
+          fiscalYear: s.fiscalYear,
+          fiscalQuarter: s.fiscalQuarter,
+          periodEnd: s.periodEnd,
+          revenue: s.revenue,
+          netIncome: s.netIncome,
+          eps: s.eps,
+        })),
+        balance: yahooData.balance.map((s, idx) => ({
+          id: idx,
+          symbol: s.symbol,
+          statementType: s.statementType,
+          timeframe: s.timeframe,
+          fiscalYear: s.fiscalYear,
+          fiscalQuarter: s.fiscalQuarter,
+          periodEnd: s.periodEnd,
+          totalAssets: s.totalAssets,
+          totalLiabilities: s.totalLiabilities,
+        })),
+        cashFlow: yahooData.cashFlow.map((s, idx) => ({
+          id: idx,
+          symbol: s.symbol,
+          statementType: s.statementType,
+          timeframe: s.timeframe,
+          fiscalYear: s.fiscalYear,
+          fiscalQuarter: s.fiscalQuarter,
+          periodEnd: s.periodEnd,
+          operatingCashFlow: s.operatingCashFlow,
+        })),
+      };
+    }
     
     // 1h cache for financials (rarely changes)
     setCacheHeaders(c, 3600, 7200);
@@ -680,38 +720,27 @@ app.get('/:symbol/financials', async (c) => {
 
 // ============================================
 // GET /api/ticker/:symbol/dividends
+// Fetches from DB first, falls back to Yahoo Finance (free, no API key)
 // ============================================
 app.get('/:symbol/dividends', async (c) => {
-  const dbError = requireDb(c);
-  if (dbError) return dbError;
-  
   const symbol = c.req.param('symbol').toUpperCase();
   const limit = Math.min(parseInt(c.req.query('limit') || '20'), 100);
   
   try {
-    const divs = await db.select()
-      .from(dividends)
-      .where(eq(dividends.symbol, symbol))
-      .orderBy(desc(dividends.exDividendDate))
-      .limit(limit);
+    let dividendList: any[] = [];
+    let trailingYield: number | undefined;
+    let currentPrice: number | undefined;
     
-    // Calculate yield from latest snapshot
-    const [snap] = await db.select({ price: latestSnapshot.price })
-      .from(latestSnapshot)
-      .where(eq(latestSnapshot.symbol, symbol));
-    
-    const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const annualDividend = divs
-      .filter(d => d.exDividendDate >= oneYearAgo)
-      .reduce((sum, d) => sum + d.amount, 0);
-    
-    // 1h cache for dividends
-    setCacheHeaders(c, 3600, 7200);
-    
-    const response: { success: boolean; data: DividendWithYield; timestamp: number } = {
-      success: true,
-      data: {
-        dividends: divs.map(d => ({
+    // Try DB first if connected
+    if (isDbConnected()) {
+      const divs = await db.select()
+        .from(dividends)
+        .where(eq(dividends.symbol, symbol))
+        .orderBy(desc(dividends.exDividendDate))
+        .limit(limit);
+      
+      if (divs.length > 0) {
+        dividendList = divs.map(d => ({
           id: d.id,
           symbol: d.symbol,
           exDividendDate: d.exDividendDate,
@@ -721,8 +750,56 @@ app.get('/:symbol/dividends', async (c) => {
           amount: d.amount,
           frequency: d.frequency || undefined,
           dividendType: d.dividendType || undefined,
-        })),
-        trailingYield: snap?.price ? (annualDividend / snap.price) * 100 : undefined,
+        }));
+      }
+      
+      // Get current price for yield calculation
+      const [snap] = await db.select({ price: latestSnapshot.price })
+        .from(latestSnapshot)
+        .where(eq(latestSnapshot.symbol, symbol));
+      currentPrice = snap?.price;
+    }
+    
+    // Fallback to Yahoo Finance if DB is empty (free, no API key needed)
+    if (dividendList.length === 0) {
+      const yahooDivs = await yahooClient.getDividends(symbol, limit);
+      
+      dividendList = yahooDivs.map((d, idx) => ({
+        id: idx,
+        symbol: d.symbol,
+        exDividendDate: d.exDividendDate,
+        payDate: d.payDate,
+        amount: d.amount,
+        frequency: d.frequency,
+      }));
+      
+      // Try to get current price from Yahoo for yield calculation
+      if (!currentPrice && dividendList.length > 0) {
+        const quote = await yahooClient.getQuote(symbol);
+        currentPrice = quote?.regularMarketPrice;
+      }
+    }
+    
+    // Calculate trailing yield
+    if (dividendList.length > 0 && currentPrice) {
+      const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const annualDividend = dividendList
+        .filter(d => d.exDividendDate >= oneYearAgo)
+        .reduce((sum, d) => sum + d.amount, 0);
+      
+      if (annualDividend > 0) {
+        trailingYield = (annualDividend / currentPrice) * 100;
+      }
+    }
+    
+    // 1h cache for dividends
+    setCacheHeaders(c, 3600, 7200);
+    
+    const response: { success: boolean; data: DividendWithYield; timestamp: number } = {
+      success: true,
+      data: {
+        dividends: dividendList,
+        trailingYield,
       },
       timestamp: Date.now(),
     };
@@ -740,20 +817,46 @@ app.get('/:symbol/dividends', async (c) => {
 
 // ============================================
 // GET /api/ticker/:symbol/splits
+// Fetches from DB first, falls back to Yahoo Finance (free, no API key)
 // ============================================
 app.get('/:symbol/splits', async (c) => {
-  const dbError = requireDb(c);
-  if (dbError) return dbError;
-  
   const symbol = c.req.param('symbol').toUpperCase();
   const limit = Math.min(parseInt(c.req.query('limit') || '20'), 50);
   
   try {
-    const splits = await db.select()
-      .from(stockSplits)
-      .where(eq(stockSplits.symbol, symbol))
-      .orderBy(desc(stockSplits.executionDate))
-      .limit(limit);
+    let splitList: any[] = [];
+    
+    // Try DB first if connected
+    if (isDbConnected()) {
+      const splits = await db.select()
+        .from(stockSplits)
+        .where(eq(stockSplits.symbol, symbol))
+        .orderBy(desc(stockSplits.executionDate))
+        .limit(limit);
+      
+      if (splits.length > 0) {
+        splitList = splits.map(s => ({
+          id: s.id,
+          symbol: s.symbol,
+          executionDate: s.executionDate,
+          splitFrom: s.splitFrom,
+          splitTo: s.splitTo,
+        }));
+      }
+    }
+    
+    // Fallback to Yahoo Finance if DB is empty (free, no API key needed)
+    if (splitList.length === 0) {
+      const yahooSplits = await yahooClient.getStockSplits(symbol, limit);
+      
+      splitList = yahooSplits.map((s, idx) => ({
+        id: idx,
+        symbol: s.symbol,
+        executionDate: s.executionDate,
+        splitFrom: s.splitFrom,
+        splitTo: s.splitTo,
+      }));
+    }
     
     // 1h cache for splits
     setCacheHeaders(c, 3600, 7200);
@@ -761,13 +864,7 @@ app.get('/:symbol/splits', async (c) => {
     return c.json({
       success: true,
       data: {
-        splits: splits.map(s => ({
-          id: s.id,
-          symbol: s.symbol,
-          executionDate: s.executionDate,
-          splitFrom: s.splitFrom,
-          splitTo: s.splitTo,
-        })),
+        splits: splitList,
       },
       timestamp: Date.now(),
     });
@@ -783,38 +880,35 @@ app.get('/:symbol/splits', async (c) => {
 
 // ============================================
 // GET /api/ticker/:symbol/news
+// Fetches from DB first, falls back to Yahoo Finance (free, no API key)
 // ============================================
 app.get('/:symbol/news', async (c) => {
-  const dbError = requireDb(c);
-  if (dbError) return dbError;
-  
   const symbol = c.req.param('symbol').toUpperCase();
   const limit = Math.min(parseInt(c.req.query('limit') || '20'), 50);
   
   try {
-    const articles = await db.select({
-      id: newsArticles.id,
-      title: newsArticles.title,
-      publishedAt: newsArticles.publishedAt,
-      author: newsArticles.author,
-      articleUrl: newsArticles.articleUrl,
-      imageUrl: newsArticles.imageUrl,
-      description: newsArticles.description,
-      publisher: newsArticles.publisher,
-    })
-    .from(newsArticles)
-    .innerJoin(newsTickers, eq(newsArticles.id, newsTickers.articleId))
-    .where(eq(newsTickers.symbol, symbol))
-    .orderBy(desc(newsArticles.publishedAt))
-    .limit(limit);
+    let articleList: any[] = [];
     
-    // 5min cache for news
-    setCacheHeaders(c, 300, 600);
-    
-    return c.json({
-      success: true,
-      data: {
-        articles: articles.map(a => ({
+    // Try DB first if connected
+    if (isDbConnected()) {
+      const articles = await db.select({
+        id: newsArticles.id,
+        title: newsArticles.title,
+        publishedAt: newsArticles.publishedAt,
+        author: newsArticles.author,
+        articleUrl: newsArticles.articleUrl,
+        imageUrl: newsArticles.imageUrl,
+        description: newsArticles.description,
+        publisher: newsArticles.publisher,
+      })
+      .from(newsArticles)
+      .innerJoin(newsTickers, eq(newsArticles.id, newsTickers.articleId))
+      .where(eq(newsTickers.symbol, symbol))
+      .orderBy(desc(newsArticles.publishedAt))
+      .limit(limit);
+      
+      if (articles.length > 0) {
+        articleList = articles.map(a => ({
           id: a.id,
           title: a.title,
           publishedAt: a.publishedAt.toISOString(),
@@ -823,7 +917,32 @@ app.get('/:symbol/news', async (c) => {
           imageUrl: a.imageUrl || undefined,
           description: a.description || undefined,
           publisher: a.publisher as any,
-        })),
+        }));
+      }
+    }
+    
+    // Fallback to Yahoo Finance if DB is empty (free, no API key needed)
+    if (articleList.length === 0) {
+      const yahooNews = await yahooClient.getNews(symbol, limit);
+      
+      articleList = yahooNews.map(a => ({
+        id: a.id,
+        title: a.title,
+        publishedAt: a.publishedAt,
+        articleUrl: a.articleUrl,
+        imageUrl: a.imageUrl,
+        description: a.description,
+        publisher: a.publisher,
+      }));
+    }
+    
+    // 5min cache for news
+    setCacheHeaders(c, 300, 600);
+    
+    return c.json({
+      success: true,
+      data: {
+        articles: articleList,
       },
       timestamp: Date.now(),
     });

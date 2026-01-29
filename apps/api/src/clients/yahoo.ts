@@ -692,6 +692,304 @@ export class YahooClient {
       // Ignore cache errors
     }
   }
+
+  // ============================================
+  // Financial Statements
+  // ============================================
+
+  /**
+   * Get income statements (quarterly or annual)
+   */
+  async getIncomeStatements(symbol: string, timeframe: 'quarterly' | 'annual' = 'quarterly', limit = 8): Promise<YahooFinancialStatement[]> {
+    try {
+      const moduleName = timeframe === 'quarterly' ? 'incomeStatementHistoryQuarterly' : 'incomeStatementHistory';
+      const result = await yahooFinance.quoteSummary(symbol, {
+        modules: [moduleName as any],
+      });
+      
+      const statements = timeframe === 'quarterly' 
+        ? (result as any).incomeStatementHistoryQuarterly?.incomeStatementHistory
+        : (result as any).incomeStatementHistory?.incomeStatementHistory;
+      
+      if (!statements) return [];
+      
+      return statements.slice(0, limit).map((stmt: any) => {
+        const endDate = new Date(stmt.endDate);
+        return {
+          symbol,
+          statementType: 'income' as const,
+          timeframe,
+          fiscalYear: endDate.getFullYear(),
+          fiscalQuarter: timeframe === 'quarterly' ? Math.ceil((endDate.getMonth() + 1) / 3) : undefined,
+          periodEnd: stmt.endDate?.toISOString?.() || stmt.endDate,
+          revenue: stmt.totalRevenue,
+          netIncome: stmt.netIncome,
+          eps: stmt.dilutedEPS,
+        };
+      });
+    } catch (error) {
+      console.error(`Yahoo income statements failed for ${symbol}:`, error instanceof Error ? error.message : error);
+      return [];
+    }
+  }
+
+  /**
+   * Get balance sheets (quarterly or annual)
+   */
+  async getBalanceSheets(symbol: string, timeframe: 'quarterly' | 'annual' = 'quarterly', limit = 8): Promise<YahooFinancialStatement[]> {
+    try {
+      const moduleName = timeframe === 'quarterly' ? 'balanceSheetHistoryQuarterly' : 'balanceSheetHistory';
+      const result = await yahooFinance.quoteSummary(symbol, {
+        modules: [moduleName as any],
+      });
+      
+      const statements = timeframe === 'quarterly' 
+        ? (result as any).balanceSheetHistoryQuarterly?.balanceSheetStatements
+        : (result as any).balanceSheetHistory?.balanceSheetStatements;
+      
+      if (!statements) return [];
+      
+      return statements.slice(0, limit).map((stmt: any) => {
+        const endDate = new Date(stmt.endDate);
+        return {
+          symbol,
+          statementType: 'balance' as const,
+          timeframe,
+          fiscalYear: endDate.getFullYear(),
+          fiscalQuarter: timeframe === 'quarterly' ? Math.ceil((endDate.getMonth() + 1) / 3) : undefined,
+          periodEnd: stmt.endDate?.toISOString?.() || stmt.endDate,
+          totalAssets: stmt.totalAssets,
+          totalLiabilities: stmt.totalLiab,
+        };
+      });
+    } catch (error) {
+      console.error(`Yahoo balance sheets failed for ${symbol}:`, error instanceof Error ? error.message : error);
+      return [];
+    }
+  }
+
+  /**
+   * Get cash flow statements (quarterly or annual)
+   */
+  async getCashFlowStatements(symbol: string, timeframe: 'quarterly' | 'annual' = 'quarterly', limit = 8): Promise<YahooFinancialStatement[]> {
+    try {
+      const moduleName = timeframe === 'quarterly' ? 'cashflowStatementHistoryQuarterly' : 'cashflowStatementHistory';
+      const result = await yahooFinance.quoteSummary(symbol, {
+        modules: [moduleName as any],
+      });
+      
+      const statements = timeframe === 'quarterly' 
+        ? (result as any).cashflowStatementHistoryQuarterly?.cashflowStatements
+        : (result as any).cashflowStatementHistory?.cashflowStatements;
+      
+      if (!statements) return [];
+      
+      return statements.slice(0, limit).map((stmt: any) => {
+        const endDate = new Date(stmt.endDate);
+        return {
+          symbol,
+          statementType: 'cashflow' as const,
+          timeframe,
+          fiscalYear: endDate.getFullYear(),
+          fiscalQuarter: timeframe === 'quarterly' ? Math.ceil((endDate.getMonth() + 1) / 3) : undefined,
+          periodEnd: stmt.endDate?.toISOString?.() || stmt.endDate,
+          operatingCashFlow: stmt.totalCashFromOperatingActivities,
+        };
+      });
+    } catch (error) {
+      console.error(`Yahoo cash flow failed for ${symbol}:`, error instanceof Error ? error.message : error);
+      return [];
+    }
+  }
+
+  /**
+   * Get all financial statements in one call
+   */
+  async getAllFinancials(symbol: string, timeframe: 'quarterly' | 'annual' = 'quarterly', limit = 8): Promise<{
+    income: YahooFinancialStatement[];
+    balance: YahooFinancialStatement[];
+    cashFlow: YahooFinancialStatement[];
+  }> {
+    const [income, balance, cashFlow] = await Promise.all([
+      this.getIncomeStatements(symbol, timeframe, limit),
+      this.getBalanceSheets(symbol, timeframe, limit),
+      this.getCashFlowStatements(symbol, timeframe, limit),
+    ]);
+    return { income, balance, cashFlow };
+  }
+
+  // ============================================
+  // Dividends
+  // ============================================
+
+  /**
+   * Get dividend history from chart data
+   */
+  async getDividends(symbol: string, limit = 20): Promise<YahooDividend[]> {
+    try {
+      // Get dividend data from chart with events
+      const chart = await yahooFinance.chart(symbol, {
+        period1: new Date(Date.now() - 5 * 365 * 24 * 60 * 60 * 1000), // 5 years
+        period2: new Date(),
+        events: 'div',
+      });
+      
+      const dividends: YahooDividend[] = [];
+      
+      if (chart.events?.dividends) {
+        const divEvents = Object.values(chart.events.dividends);
+        for (const div of divEvents.slice(-limit).reverse()) {
+          dividends.push({
+            symbol,
+            exDividendDate: new Date(div.date * 1000).toISOString().split('T')[0],
+            amount: div.amount,
+          });
+        }
+      }
+      
+      // Also try to get from calendar for upcoming dividends
+      try {
+        const summary = await yahooFinance.quoteSummary(symbol, {
+          modules: ['calendarEvents', 'summaryDetail'],
+        });
+        
+        const calendarDiv = summary.calendarEvents?.dividendDate;
+        if (calendarDiv && !dividends.find(d => d.exDividendDate === calendarDiv.toISOString().split('T')[0])) {
+          const amount = summary.summaryDetail?.dividendRate;
+          if (amount) {
+            dividends.unshift({
+              symbol,
+              exDividendDate: calendarDiv.toISOString().split('T')[0],
+              amount: amount / 4, // Quarterly estimate
+            });
+          }
+        }
+      } catch (e) {
+        // Calendar data optional
+      }
+      
+      return dividends.slice(0, limit);
+    } catch (error) {
+      console.error(`Yahoo dividends failed for ${symbol}:`, error instanceof Error ? error.message : error);
+      return [];
+    }
+  }
+
+  // ============================================
+  // Stock Splits
+  // ============================================
+
+  /**
+   * Get stock split history from chart data
+   */
+  async getStockSplits(symbol: string, limit = 20): Promise<YahooSplit[]> {
+    try {
+      const chart = await yahooFinance.chart(symbol, {
+        period1: new Date(Date.now() - 10 * 365 * 24 * 60 * 60 * 1000), // 10 years
+        period2: new Date(),
+        events: 'split',
+      });
+      
+      const splits: YahooSplit[] = [];
+      
+      if (chart.events?.splits) {
+        const splitEvents = Object.values(chart.events.splits);
+        for (const split of splitEvents.slice(-limit).reverse()) {
+          const numerator = split.numerator || 1;
+          const denominator = split.denominator || 1;
+          
+          splits.push({
+            symbol,
+            executionDate: new Date(split.date * 1000).toISOString().split('T')[0],
+            splitFrom: denominator,
+            splitTo: numerator,
+          });
+        }
+      }
+      
+      return splits;
+    } catch (error) {
+      console.error(`Yahoo splits failed for ${symbol}:`, error instanceof Error ? error.message : error);
+      return [];
+    }
+  }
+
+  // ============================================
+  // News
+  // ============================================
+
+  /**
+   * Get news for a symbol using search
+   */
+  async getNews(symbol: string, limit = 20): Promise<YahooNewsArticle[]> {
+    try {
+      const search = await yahooFinance.search(symbol, {
+        newsCount: limit,
+        quotesCount: 0,
+      });
+      
+      if (!search.news) return [];
+      
+      return search.news.slice(0, limit).map((article, idx) => ({
+        id: `yahoo-${symbol}-${idx}-${article.providerPublishTime}`,
+        title: article.title,
+        publishedAt: article.providerPublishTime 
+          ? new Date(article.providerPublishTime * 1000).toISOString()
+          : new Date().toISOString(),
+        articleUrl: article.link,
+        imageUrl: article.thumbnail?.resolutions?.[0]?.url,
+        description: undefined, // Yahoo search doesn't include description
+        publisher: article.publisher ? { name: article.publisher } : undefined,
+      }));
+    } catch (error) {
+      console.error(`Yahoo news failed for ${symbol}:`, error instanceof Error ? error.message : error);
+      return [];
+    }
+  }
+}
+
+// ============================================
+// Additional Types for Financial Data
+// ============================================
+
+export interface YahooFinancialStatement {
+  symbol: string;
+  statementType: 'income' | 'balance' | 'cashflow';
+  timeframe: 'quarterly' | 'annual';
+  fiscalYear: number;
+  fiscalQuarter?: number;
+  periodEnd: string;
+  revenue?: number;
+  netIncome?: number;
+  eps?: number;
+  totalAssets?: number;
+  totalLiabilities?: number;
+  operatingCashFlow?: number;
+}
+
+export interface YahooDividend {
+  symbol: string;
+  exDividendDate: string;
+  payDate?: string;
+  amount: number;
+  frequency?: number;
+}
+
+export interface YahooSplit {
+  symbol: string;
+  executionDate: string;
+  splitFrom: number;
+  splitTo: number;
+}
+
+export interface YahooNewsArticle {
+  id: string;
+  title: string;
+  publishedAt: string;
+  articleUrl?: string;
+  imageUrl?: string;
+  description?: string;
+  publisher?: { name: string };
 }
 
 // Singleton instance
