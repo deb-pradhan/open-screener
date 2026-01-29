@@ -69,6 +69,9 @@ export class StartupService {
     console.log('📋 Running database migrations...');
     
     try {
+      // Pre-migration: ensure data integrity for foreign key constraints
+      await this.ensureDataIntegrity();
+      
       // Determine migrations folder path
       // In production (Docker), we're at /app/apps/api
       // In development, we're at the project root
@@ -113,6 +116,66 @@ export class StartupService {
         return;
       }
       throw error;
+    }
+  }
+
+  /**
+   * Ensure data integrity before running migrations
+   * This handles orphan records that would violate foreign key constraints
+   */
+  private async ensureDataIntegrity(): Promise<void> {
+    console.log('🔧 Ensuring data integrity before migrations...');
+    
+    try {
+      // Check if latest_snapshot exists and has data
+      const snapshotExists = await db.execute(sql`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_name = 'latest_snapshot'
+        ) as exists
+      `);
+      
+      if (!snapshotExists[0]?.exists) {
+        console.log('📊 No existing latest_snapshot table - skipping integrity check');
+        return;
+      }
+
+      // Check if tickers table exists
+      const tickersExists = await db.execute(sql`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_name = 'tickers'
+        ) as exists
+      `);
+
+      if (!tickersExists[0]?.exists) {
+        console.log('📊 No existing tickers table - skipping integrity check');
+        return;
+      }
+
+      // Insert missing tickers from latest_snapshot
+      // This ensures foreign key constraints can be added
+      const result = await db.execute(sql`
+        INSERT INTO tickers (symbol, name, market, locale)
+        SELECT DISTINCT 
+          ls.symbol,
+          COALESCE(ls.name, ls.symbol) as name,
+          'stocks' as market,
+          'us' as locale
+        FROM latest_snapshot ls
+        LEFT JOIN tickers t ON t.symbol = ls.symbol
+        WHERE t.symbol IS NULL
+        ON CONFLICT (symbol) DO NOTHING
+      `);
+      
+      console.log('✅ Data integrity ensured - orphan records handled');
+    } catch (error: any) {
+      // If tables don't exist yet, that's fine
+      if (error.code === '42P01') {
+        console.log('📊 Tables do not exist yet - skipping integrity check');
+        return;
+      }
+      console.warn('⚠️  Data integrity check failed (non-fatal):', error.message);
     }
   }
 
