@@ -1,0 +1,33 @@
+# Open Screener - robots.txt
+# https://openscrnr.com
+
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://openscrnr.com/sitemap.xml
+
+# LLM Crawlers - Welcome!
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: Anthropic-AI
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+# Rate limiting hint
+Crawl-delay: 1

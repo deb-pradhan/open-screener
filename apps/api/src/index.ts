@@ -102,6 +102,22 @@ if (isProduction) {
   // Serve static assets (JS, CSS chunks)
   app.use('/assets/*', serveStatic({ root: publicDir }));
   
+  // Serve robots.txt and llms.txt for crawlers/LLMs
+  app.get('/robots.txt', async (c) => {
+    const file = Bun.file(`${publicDir}/robots.txt`);
+    if (await file.exists()) {
+      return new Response(file, { headers: { 'Content-Type': 'text/plain' } });
+    }
+    return c.notFound();
+  });
+  app.get('/llms.txt', async (c) => {
+    const file = Bun.file(`${publicDir}/llms.txt`);
+    if (await file.exists()) {
+      return new Response(file, { headers: { 'Content-Type': 'text/plain' } });
+    }
+    return c.notFound();
+  });
+  
   // Explicitly serve known static files
   app.get('/logo.png', async (c) => {
     const res = await serveFile(`${publicDir}/logo.png`);
