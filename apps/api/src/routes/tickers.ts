@@ -1,40 +1,96 @@
 import { Hono } from 'hono';
-import { db, schema } from '../db';
-import { eq, ilike, and, sql } from 'drizzle-orm';
-import type { ApiResponse, Ticker } from '@screener/shared';
+import { db, schema, checkDbConnection } from '../db';
+import { eq, and, sql, desc } from 'drizzle-orm';
+import type { ApiResponse } from '@screener/shared';
 
 export const tickersRouter = new Hono();
 
 // Get all tickers with optional search
 tickersRouter.get('/', async (c) => {
-  const search = c.req.query('search');
+  const search = c.req.query('search')?.trim().toUpperCase();
   const limit = Math.min(Number(c.req.query('limit')) || 100, 1000);
   const offset = Number(c.req.query('offset')) || 0;
   const activeOnly = c.req.query('active') !== 'false';
 
+  // Check database connection first
+  const isConnected = await checkDbConnection();
+  if (!isConnected) {
+    const response: ApiResponse<null> = {
+      success: false,
+      error: 'Database not available',
+      timestamp: Date.now(),
+    };
+    return c.json(response, 503);
+  }
+
   try {
+    // Use latest_snapshot for search - it has the data we need and is faster
     const conditions = [];
     
-    if (activeOnly) {
-      conditions.push(eq(schema.tickers.active, true));
-    }
-    
     if (search) {
+      // Search by symbol (exact start match first) or name
       conditions.push(
-        sql`(${schema.tickers.symbol} ILIKE ${`%${search}%`} OR ${schema.tickers.name} ILIKE ${`%${search}%`})`
+        sql`(${schema.latestSnapshot.symbol} ILIKE ${`${search}%`} OR ${schema.latestSnapshot.name} ILIKE ${`%${search}%`})`
       );
     }
 
-    const tickers = await db
-      .select()
-      .from(schema.tickers)
+    const results = await db
+      .select({
+        symbol: schema.latestSnapshot.symbol,
+        name: schema.latestSnapshot.name,
+        price: schema.latestSnapshot.price,
+        changePercent: schema.latestSnapshot.changePercent,
+        logoUrl: schema.latestSnapshot.logoUrl,
+      })
+      .from(schema.latestSnapshot)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(
+        // Prioritize exact symbol matches, then by market cap
+        search 
+          ? sql`CASE WHEN ${schema.latestSnapshot.symbol} = ${search} THEN 0 WHEN ${schema.latestSnapshot.symbol} LIKE ${search + '%'} THEN 1 ELSE 2 END`
+          : desc(schema.latestSnapshot.marketCap)
+      )
       .limit(limit)
       .offset(offset);
 
-    const response: ApiResponse<typeof tickers> = {
+    const response: ApiResponse<typeof results> = {
       success: true,
-      data: tickers,
+      data: results,
+      timestamp: Date.now(),
+    };
+
+    return c.json(response);
+  } catch (error) {
+    console.error('Ticker search error:', error);
+    const response: ApiResponse<null> = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      timestamp: Date.now(),
+    };
+    return c.json(response, 500);
+  }
+});
+
+// Get ticker count - must be before /:symbol route
+tickersRouter.get('/stats/count', async (c) => {
+  const isConnected = await checkDbConnection();
+  if (!isConnected) {
+    const response: ApiResponse<null> = {
+      success: false,
+      error: 'Database not available',
+      timestamp: Date.now(),
+    };
+    return c.json(response, 503);
+  }
+
+  try {
+    const [result] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(schema.latestSnapshot);
+
+    const response: ApiResponse<{ count: number }> = {
+      success: true,
+      data: { count: Number(result.count) },
       timestamp: Date.now(),
     };
 
@@ -53,11 +109,27 @@ tickersRouter.get('/', async (c) => {
 tickersRouter.get('/:symbol', async (c) => {
   const symbol = c.req.param('symbol').toUpperCase();
 
+  const isConnected = await checkDbConnection();
+  if (!isConnected) {
+    const response: ApiResponse<null> = {
+      success: false,
+      error: 'Database not available',
+      timestamp: Date.now(),
+    };
+    return c.json(response, 503);
+  }
+
   try {
     const [ticker] = await db
-      .select()
-      .from(schema.tickers)
-      .where(eq(schema.tickers.symbol, symbol))
+      .select({
+        symbol: schema.latestSnapshot.symbol,
+        name: schema.latestSnapshot.name,
+        price: schema.latestSnapshot.price,
+        changePercent: schema.latestSnapshot.changePercent,
+        logoUrl: schema.latestSnapshot.logoUrl,
+      })
+      .from(schema.latestSnapshot)
+      .where(eq(schema.latestSnapshot.symbol, symbol))
       .limit(1);
 
     if (!ticker) {
@@ -72,31 +144,6 @@ tickersRouter.get('/:symbol', async (c) => {
     const response: ApiResponse<typeof ticker> = {
       success: true,
       data: ticker,
-      timestamp: Date.now(),
-    };
-
-    return c.json(response);
-  } catch (error) {
-    const response: ApiResponse<null> = {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      timestamp: Date.now(),
-    };
-    return c.json(response, 500);
-  }
-});
-
-// Get ticker count
-tickersRouter.get('/stats/count', async (c) => {
-  try {
-    const [result] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(schema.tickers)
-      .where(eq(schema.tickers.active, true));
-
-    const response: ApiResponse<{ count: number }> = {
-      success: true,
-      data: { count: Number(result.count) },
       timestamp: Date.now(),
     };
 

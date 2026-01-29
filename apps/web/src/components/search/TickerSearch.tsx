@@ -131,19 +131,31 @@ export default function TickerSearch({
                         : "hover:bg-surface-subtle"
                     )}
                   >
-                    <div className="flex-shrink-0 w-14 text-left">
+                    <div className="flex-shrink-0 w-16 text-left">
                       <span className="text-sm font-medium text-accent-main">
                         {result.symbol}
                       </span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-ink-primary truncate">
-                        {result.name}
-                      </p>
-                      <p className="text-xs text-ink-tertiary">
-                        {result.primaryExchange} · {result.type}
+                        {result.name || result.symbol}
                       </p>
                     </div>
+                    {result.price !== null && (
+                      <div className="flex-shrink-0 text-right">
+                        <p className="text-sm font-mono text-ink-primary">
+                          ${result.price.toFixed(2)}
+                        </p>
+                        {result.changePercent !== null && (
+                          <p className={cn(
+                            "text-xs font-mono",
+                            result.changePercent >= 0 ? "text-signal-success" : "text-signal-error"
+                          )}>
+                            {result.changePercent >= 0 ? '+' : ''}{result.changePercent.toFixed(2)}%
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </button>
                 </li>
               ))}

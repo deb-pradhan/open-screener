@@ -5,10 +5,10 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 export interface SearchResult {
   symbol: string;
-  name: string;
-  market: string;
-  type: string;
-  primaryExchange: string;
+  name: string | null;
+  price: number | null;
+  changePercent: number | null;
+  logoUrl: string | null;
 }
 
 interface ApiResponse<T> {
@@ -20,14 +20,30 @@ interface ApiResponse<T> {
 async function searchTickers(query: string): Promise<SearchResult[]> {
   if (!query || query.length < 1) return [];
   
-  const res = await fetch(`${API_BASE}/tickers?search=${encodeURIComponent(query)}&limit=10`);
-  const json: ApiResponse<SearchResult[]> = await res.json();
-  
-  if (!json.success || !json.data) {
-    throw new Error(json.error || 'Search failed');
+  try {
+    const res = await fetch(`${API_BASE}/tickers?search=${encodeURIComponent(query)}&limit=10`);
+    
+    if (!res.ok) {
+      // Handle 503 (DB not available) gracefully
+      if (res.status === 503) {
+        console.warn('Database not available for search');
+        return [];
+      }
+      throw new Error(`Search failed: ${res.status}`);
+    }
+    
+    const json: ApiResponse<SearchResult[]> = await res.json();
+    
+    if (!json.success || !json.data) {
+      console.warn('Search returned no data:', json.error);
+      return [];
+    }
+    
+    return json.data;
+  } catch (error) {
+    console.error('Search error:', error);
+    return [];
   }
-  
-  return json.data;
 }
 
 export function useTickerSearch(debounceMs = 300) {
@@ -48,6 +64,8 @@ export function useTickerSearch(debounceMs = 300) {
     queryFn: () => searchTickers(debouncedQuery),
     enabled: debouncedQuery.length >= 1,
     staleTime: 30000, // 30 seconds
+    retry: false, // Don't retry on failure
+    refetchOnWindowFocus: false,
   });
 
   const clear = useCallback(() => {
