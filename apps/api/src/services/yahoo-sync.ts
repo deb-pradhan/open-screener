@@ -125,9 +125,9 @@ export class YahooSyncService {
         await this.syncInsiderTransactions(symbol, yahooData.insiderTransactions);
       }
 
-      // 9. Update latest snapshot with key data
+      // 9. Update latest snapshot with key data for screener
       if (yahooData.quote) {
-        await this.updateLatestSnapshot(symbol, yahooData.quote, yahooData.stats);
+        await this.updateLatestSnapshot(symbol, yahooData.quote, yahooData.stats, yahooData.holdersBreakdown);
       }
 
       // 10. Update sync cache
@@ -458,20 +458,64 @@ export class YahooSyncService {
   private async updateLatestSnapshot(
     symbol: string,
     quote: NonNullable<Awaited<ReturnType<typeof yahooClient.getTickerData>>['quote']>,
-    stats: Awaited<ReturnType<typeof yahooClient.getTickerData>>['stats']
+    stats: Awaited<ReturnType<typeof yahooClient.getTickerData>>['stats'],
+    holders?: Awaited<ReturnType<typeof yahooClient.getTickerData>>['holdersBreakdown']
   ): Promise<void> {
-    // Only update fields that come from Yahoo, don't overwrite price data from Polygon
+    const now = new Date();
+    // Update all Yahoo fields in latest_snapshot for screener queries
     await db
       .update(latestSnapshot)
       .set({
         name: quote.longName || quote.shortName,
+        // Trading data
+        fiftyTwoWeekHigh: quote.fiftyTwoWeekHigh,
+        fiftyTwoWeekLow: quote.fiftyTwoWeekLow,
+        fiftyDayAverage: quote.fiftyDayAverage,
+        twoHundredDayAverage: quote.twoHundredDayAverage,
+        averageVolume: quote.averageVolume,
+        beta: quote.beta,
+        // Valuation
         marketCap: quote.marketCap,
         peRatio: quote.trailingPE,
+        forwardPe: stats?.forwardPE,
         pbRatio: quote.priceToBook,
-        dividendYield: quote.dividendYield ? quote.dividendYield * 100 : undefined,
+        psRatio: stats?.priceToSalesTrailing12Months,
+        pegRatio: stats?.pegRatio,
+        evToEbitda: stats?.enterpriseToEbitda,
+        evToRevenue: stats?.enterpriseToRevenue,
+        // Profitability
         grossMargin: stats?.grossMargins ? stats.grossMargins * 100 : undefined,
+        operatingMargin: stats?.operatingMargins ? stats.operatingMargins * 100 : undefined,
+        ebitdaMargin: stats?.ebitdaMargins ? stats.ebitdaMargins * 100 : undefined,
+        netMargin: stats?.profitMargins ? stats.profitMargins * 100 : undefined,
+        roe: stats?.returnOnEquity ? stats.returnOnEquity * 100 : undefined,
+        roa: stats?.returnOnAssets ? stats.returnOnAssets * 100 : undefined,
+        // Growth
+        revenueGrowthYoy: stats?.revenueGrowth ? stats.revenueGrowth * 100 : undefined,
+        revenueGrowthQuarterly: stats?.revenueQuarterlyGrowth ? stats.revenueQuarterlyGrowth * 100 : undefined,
+        epsGrowthYoy: stats?.earningsGrowth ? stats.earningsGrowth * 100 : undefined,
+        earningsGrowthQuarterly: stats?.earningsQuarterlyGrowth ? stats.earningsQuarterlyGrowth * 100 : undefined,
+        // Financial health
         debtToEquity: stats?.debtToEquity,
-        ratiosLastSync: new Date(),
+        currentRatio: stats?.currentRatio,
+        quickRatio: stats?.quickRatio,
+        // Dividends
+        dividendYield: quote.dividendYield ? quote.dividendYield * 100 : undefined,
+        // Short interest
+        shortRatio: stats?.shortRatio,
+        shortPercentOfFloat: stats?.shortPercentOfFloat ? stats.shortPercentOfFloat * 100 : undefined,
+        // Analyst data
+        targetMeanPrice: stats?.targetMeanPrice,
+        targetHighPrice: stats?.targetHighPrice,
+        targetLowPrice: stats?.targetLowPrice,
+        numberOfAnalysts: stats?.numberOfAnalystOpinions,
+        recommendationMean: stats?.recommendationMean,
+        // Ownership
+        insidersPercentHeld: holders?.insidersPercentHeld ? holders.insidersPercentHeld * 100 : undefined,
+        institutionsPercentHeld: holders?.institutionsPercentHeld ? holders.institutionsPercentHeld * 100 : undefined,
+        // Sync tracking
+        ratiosLastSync: now,
+        yahooSyncedAt: now,
       })
       .where(eq(latestSnapshot.symbol, symbol));
   }

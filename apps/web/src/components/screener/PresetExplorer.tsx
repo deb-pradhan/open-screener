@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ChevronRight, Plus, TrendingUp, Activity, BarChart3, Zap, DollarSign } from 'lucide-react';
+import { ChevronRight, Plus, TrendingUp, Activity, BarChart3, Zap, DollarSign, LineChart, Award } from 'lucide-react';
 import { PRESET_CATEGORIES, getPresetsByCategory, type PresetCategory } from '@screener/shared';
 
 const categoryIcons: Record<PresetCategory, React.ReactNode> = {
@@ -10,6 +10,8 @@ const categoryIcons: Record<PresetCategory, React.ReactNode> = {
   price_volume: <BarChart3 className="h-4 w-4" strokeWidth={1.5} />,
   momentum: <Zap className="h-4 w-4" strokeWidth={1.5} />,
   fundamentals: <DollarSign className="h-4 w-4" strokeWidth={1.5} />,
+  analysts: <LineChart className="h-4 w-4" strokeWidth={1.5} />,
+  quality: <Award className="h-4 w-4" strokeWidth={1.5} />,
 };
 
 export function PresetExplorer() {
@@ -129,12 +131,14 @@ export function PresetExplorer() {
         </CardHeader>
         <CardContent className="px-4 sm:px-6">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
-            {['highVolume', 'topGainers', 'oversold', 'goldenCross', 'valueStocks'].map((presetId) => {
+            {['topGainers', 'strongBuy', 'highROE', 'dividendAristocrats', 'shortSqueeze'].map((presetId) => {
               const preset = getPresetsByCategory('technical').find(p => p.id === presetId) ||
                            getPresetsByCategory('moving_averages').find(p => p.id === presetId) ||
                            getPresetsByCategory('price_volume').find(p => p.id === presetId) ||
                            getPresetsByCategory('momentum').find(p => p.id === presetId) ||
-                           getPresetsByCategory('fundamentals').find(p => p.id === presetId);
+                           getPresetsByCategory('fundamentals').find(p => p.id === presetId) ||
+                           getPresetsByCategory('analysts').find(p => p.id === presetId) ||
+                           getPresetsByCategory('quality').find(p => p.id === presetId);
               
               if (!preset) return null;
               

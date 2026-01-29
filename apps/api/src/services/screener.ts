@@ -94,6 +94,13 @@ export class ScreenerService {
       price: row.price,
       volume: row.volume,
       changePercent: row.changePercent || 0,
+      // Trading data
+      fiftyTwoWeekHigh: row.fiftyTwoWeekHigh || undefined,
+      fiftyTwoWeekLow: row.fiftyTwoWeekLow || undefined,
+      fiftyDayAverage: row.fiftyDayAverage || undefined,
+      twoHundredDayAverage: row.twoHundredDayAverage || undefined,
+      averageVolume: row.averageVolume || undefined,
+      beta: row.beta || undefined,
       // Technical Indicators
       rsi14: row.rsi14 || undefined,
       sma20: row.sma20 || undefined,
@@ -106,15 +113,45 @@ export class ScreenerService {
         signal: row.macdSignal || 0,
         histogram: row.macdHistogram || 0,
       } : undefined,
-      // Fundamental Fields
+      // Valuation
       marketCap: row.marketCap || undefined,
       peRatio: row.peRatio || undefined,
+      forwardPE: row.forwardPe || undefined,
       pbRatio: row.pbRatio || undefined,
-      dividendYield: row.dividendYield || undefined,
+      psRatio: row.psRatio || undefined,
+      pegRatio: row.pegRatio || undefined,
+      evToEbitda: row.evToEbitda || undefined,
+      evToRevenue: row.evToRevenue || undefined,
+      // Profitability
       grossMargin: row.grossMargin || undefined,
-      debtToEquity: row.debtToEquity || undefined,
+      operatingMargin: row.operatingMargin || undefined,
+      ebitdaMargin: row.ebitdaMargin || undefined,
+      netMargin: row.netMargin || undefined,
+      roe: row.roe || undefined,
+      roa: row.roa || undefined,
+      // Growth
       revenueGrowthYoy: row.revenueGrowthYoy || undefined,
+      revenueGrowthQuarterly: row.revenueGrowthQuarterly || undefined,
       epsGrowthYoy: row.epsGrowthYoy || undefined,
+      earningsGrowthQuarterly: row.earningsGrowthQuarterly || undefined,
+      // Financial health
+      debtToEquity: row.debtToEquity || undefined,
+      currentRatio: row.currentRatio || undefined,
+      quickRatio: row.quickRatio || undefined,
+      // Dividends
+      dividendYield: row.dividendYield || undefined,
+      // Short interest
+      shortRatio: row.shortRatio || undefined,
+      shortPercentOfFloat: row.shortPercentOfFloat || undefined,
+      // Analyst data
+      targetMeanPrice: row.targetMeanPrice || undefined,
+      targetHighPrice: row.targetHighPrice || undefined,
+      targetLowPrice: row.targetLowPrice || undefined,
+      numberOfAnalysts: row.numberOfAnalysts || undefined,
+      recommendationMean: row.recommendationMean || undefined,
+      // Ownership
+      insidersPercentHeld: row.insidersPercentHeld || undefined,
+      institutionsPercentHeld: row.institutionsPercentHeld || undefined,
       // Metadata
       financialsLastSync: row.financialsLastSync?.toISOString(),
       ratiosLastSync: row.ratiosLastSync?.toISOString(),
@@ -159,6 +196,9 @@ export class ScreenerService {
       price: latestSnapshot.price,
       volume: latestSnapshot.volume,
       changePercent: latestSnapshot.changePercent,
+      averageVolume: latestSnapshot.averageVolume,
+      fiftyTwoWeekHigh: latestSnapshot.fiftyTwoWeekHigh,
+      fiftyTwoWeekLow: latestSnapshot.fiftyTwoWeekLow,
       // Technical Indicators
       rsi14: latestSnapshot.rsi14,
       sma20: latestSnapshot.sma20,
@@ -166,15 +206,48 @@ export class ScreenerService {
       sma200: latestSnapshot.sma200,
       ema12: latestSnapshot.ema12,
       ema26: latestSnapshot.ema26,
-      // Fundamental Fields
+      fiftyDayAverage: latestSnapshot.fiftyDayAverage,
+      twoHundredDayAverage: latestSnapshot.twoHundredDayAverage,
+      beta: latestSnapshot.beta,
+      // Valuation
       marketCap: latestSnapshot.marketCap,
       peRatio: latestSnapshot.peRatio,
+      forwardPE: latestSnapshot.forwardPe,
       pbRatio: latestSnapshot.pbRatio,
-      dividendYield: latestSnapshot.dividendYield,
+      psRatio: latestSnapshot.psRatio,
+      pegRatio: latestSnapshot.pegRatio,
+      evToEbitda: latestSnapshot.evToEbitda,
+      evToRevenue: latestSnapshot.evToRevenue,
+      // Profitability
       grossMargin: latestSnapshot.grossMargin,
-      debtToEquity: latestSnapshot.debtToEquity,
+      operatingMargin: latestSnapshot.operatingMargin,
+      ebitdaMargin: latestSnapshot.ebitdaMargin,
+      netMargin: latestSnapshot.netMargin,
+      roe: latestSnapshot.roe,
+      roa: latestSnapshot.roa,
+      // Growth
       revenueGrowthYoy: latestSnapshot.revenueGrowthYoy,
+      revenueGrowthQuarterly: latestSnapshot.revenueGrowthQuarterly,
       epsGrowthYoy: latestSnapshot.epsGrowthYoy,
+      earningsGrowthQuarterly: latestSnapshot.earningsGrowthQuarterly,
+      // Financial health
+      debtToEquity: latestSnapshot.debtToEquity,
+      currentRatio: latestSnapshot.currentRatio,
+      quickRatio: latestSnapshot.quickRatio,
+      // Dividends
+      dividendYield: latestSnapshot.dividendYield,
+      // Short interest
+      shortRatio: latestSnapshot.shortRatio,
+      shortPercentOfFloat: latestSnapshot.shortPercentOfFloat,
+      // Analyst data
+      targetMeanPrice: latestSnapshot.targetMeanPrice,
+      targetHighPrice: latestSnapshot.targetHighPrice,
+      targetLowPrice: latestSnapshot.targetLowPrice,
+      numberOfAnalysts: latestSnapshot.numberOfAnalysts,
+      recommendationMean: latestSnapshot.recommendationMean,
+      // Ownership
+      insidersPercentHeld: latestSnapshot.insidersPercentHeld,
+      institutionsPercentHeld: latestSnapshot.institutionsPercentHeld,
     };
     return columnMap[field];
   }

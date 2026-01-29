@@ -20,6 +20,9 @@ const FIELDS: Array<{ value: keyof StockIndicators; label: string; category: str
   { value: 'price', label: 'Price', category: 'Price & Volume' },
   { value: 'volume', label: 'Volume', category: 'Price & Volume' },
   { value: 'changePercent', label: 'Change %', category: 'Price & Volume' },
+  { value: 'averageVolume', label: 'Avg Volume', category: 'Price & Volume' },
+  { value: 'fiftyTwoWeekHigh', label: '52W High', category: 'Price & Volume' },
+  { value: 'fiftyTwoWeekLow', label: '52W Low', category: 'Price & Volume' },
   // Technical Indicators
   { value: 'rsi14', label: 'RSI (14)', category: 'Technical' },
   { value: 'sma20', label: 'SMA 20', category: 'Technical' },
@@ -27,15 +30,48 @@ const FIELDS: Array<{ value: keyof StockIndicators; label: string; category: str
   { value: 'sma200', label: 'SMA 200', category: 'Technical' },
   { value: 'ema12', label: 'EMA 12', category: 'Technical' },
   { value: 'ema26', label: 'EMA 26', category: 'Technical' },
-  // Fundamentals
-  { value: 'marketCap', label: 'Market Cap', category: 'Fundamentals' },
-  { value: 'peRatio', label: 'P/E Ratio', category: 'Fundamentals' },
-  { value: 'pbRatio', label: 'P/B Ratio', category: 'Fundamentals' },
-  { value: 'dividendYield', label: 'Dividend Yield', category: 'Fundamentals' },
-  { value: 'grossMargin', label: 'Gross Margin %', category: 'Fundamentals' },
-  { value: 'debtToEquity', label: 'Debt/Equity', category: 'Fundamentals' },
-  { value: 'revenueGrowthYoy', label: 'Revenue Growth YoY', category: 'Fundamentals' },
-  { value: 'epsGrowthYoy', label: 'EPS Growth YoY', category: 'Fundamentals' },
+  { value: 'fiftyDayAverage', label: '50-Day Avg', category: 'Technical' },
+  { value: 'twoHundredDayAverage', label: '200-Day Avg', category: 'Technical' },
+  { value: 'beta', label: 'Beta', category: 'Technical' },
+  // Valuation
+  { value: 'marketCap', label: 'Market Cap', category: 'Valuation' },
+  { value: 'peRatio', label: 'P/E (TTM)', category: 'Valuation' },
+  { value: 'forwardPE', label: 'P/E (Forward)', category: 'Valuation' },
+  { value: 'pbRatio', label: 'P/B Ratio', category: 'Valuation' },
+  { value: 'psRatio', label: 'P/S Ratio', category: 'Valuation' },
+  { value: 'pegRatio', label: 'PEG Ratio', category: 'Valuation' },
+  { value: 'evToEbitda', label: 'EV/EBITDA', category: 'Valuation' },
+  { value: 'evToRevenue', label: 'EV/Revenue', category: 'Valuation' },
+  // Profitability
+  { value: 'grossMargin', label: 'Gross Margin %', category: 'Profitability' },
+  { value: 'operatingMargin', label: 'Operating Margin %', category: 'Profitability' },
+  { value: 'ebitdaMargin', label: 'EBITDA Margin %', category: 'Profitability' },
+  { value: 'netMargin', label: 'Net Margin %', category: 'Profitability' },
+  { value: 'roe', label: 'ROE %', category: 'Profitability' },
+  { value: 'roa', label: 'ROA %', category: 'Profitability' },
+  // Growth
+  { value: 'revenueGrowthYoy', label: 'Revenue Growth YoY %', category: 'Growth' },
+  { value: 'revenueGrowthQuarterly', label: 'Revenue Growth QoQ %', category: 'Growth' },
+  { value: 'epsGrowthYoy', label: 'EPS Growth YoY %', category: 'Growth' },
+  { value: 'earningsGrowthQuarterly', label: 'Earnings Growth QoQ %', category: 'Growth' },
+  // Financial Health
+  { value: 'debtToEquity', label: 'Debt/Equity', category: 'Financial Health' },
+  { value: 'currentRatio', label: 'Current Ratio', category: 'Financial Health' },
+  { value: 'quickRatio', label: 'Quick Ratio', category: 'Financial Health' },
+  // Dividends
+  { value: 'dividendYield', label: 'Dividend Yield %', category: 'Dividends' },
+  // Short Interest
+  { value: 'shortRatio', label: 'Short Ratio', category: 'Short Interest' },
+  { value: 'shortPercentOfFloat', label: 'Short % of Float', category: 'Short Interest' },
+  // Analyst Ratings
+  { value: 'recommendationMean', label: 'Analyst Rating (1-5)', category: 'Analysts' },
+  { value: 'numberOfAnalysts', label: '# of Analysts', category: 'Analysts' },
+  { value: 'targetMeanPrice', label: 'Target Price (Mean)', category: 'Analysts' },
+  { value: 'targetHighPrice', label: 'Target Price (High)', category: 'Analysts' },
+  { value: 'targetLowPrice', label: 'Target Price (Low)', category: 'Analysts' },
+  // Ownership
+  { value: 'institutionsPercentHeld', label: 'Institutional %', category: 'Ownership' },
+  { value: 'insidersPercentHeld', label: 'Insider %', category: 'Ownership' },
 ];
 
 const OPERATORS: Array<{ value: FilterOperator; label: string; symbol: string }> = [

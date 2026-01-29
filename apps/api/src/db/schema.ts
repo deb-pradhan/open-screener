@@ -84,6 +84,13 @@ export const latestSnapshot = pgTable('latest_snapshot', {
   volume: real('volume').notNull(),
   vwap: real('vwap'),
   changePercent: real('change_percent'),
+  // Trading data (from Yahoo)
+  fiftyTwoWeekHigh: real('fifty_two_week_high'),
+  fiftyTwoWeekLow: real('fifty_two_week_low'),
+  fiftyDayAverage: real('fifty_day_average'),
+  twoHundredDayAverage: real('two_hundred_day_average'),
+  averageVolume: real('average_volume'),
+  beta: real('beta'),
   // Technical Indicators
   rsi14: real('rsi14'),
   sma20: real('sma20'),
@@ -94,18 +101,49 @@ export const latestSnapshot = pgTable('latest_snapshot', {
   macdValue: real('macd_value'),
   macdSignal: real('macd_signal'),
   macdHistogram: real('macd_histogram'),
-  // Fundamental data (denormalized for screener queries)
+  // Valuation (denormalized for screener queries)
   marketCap: real('market_cap'),
   peRatio: real('pe_ratio'),
+  forwardPe: real('forward_pe'),
   pbRatio: real('pb_ratio'),
-  dividendYield: real('dividend_yield'),
+  psRatio: real('ps_ratio'),
+  pegRatio: real('peg_ratio'),
+  evToEbitda: real('ev_to_ebitda'),
+  evToRevenue: real('ev_to_revenue'),
+  // Profitability
   grossMargin: real('gross_margin'),
+  operatingMargin: real('operating_margin'),
+  ebitdaMargin: real('ebitda_margin'),
+  netMargin: real('net_margin'),
+  roe: real('roe'),
+  roa: real('roa'),
+  // Growth
   revenueGrowthYoy: real('revenue_growth_yoy'),
+  revenueGrowthQuarterly: real('revenue_growth_quarterly'),
   epsGrowthYoy: real('eps_growth_yoy'),
+  earningsGrowthQuarterly: real('earnings_growth_quarterly'),
+  // Financial health
   debtToEquity: real('debt_to_equity'),
+  currentRatio: real('current_ratio'),
+  quickRatio: real('quick_ratio'),
+  // Dividends
+  dividendYield: real('dividend_yield'),
+  // Short interest
+  shortRatio: real('short_ratio'),
+  shortPercentOfFloat: real('short_percent_of_float'),
+  // Analyst data
+  targetMeanPrice: real('target_mean_price'),
+  targetHighPrice: real('target_high_price'),
+  targetLowPrice: real('target_low_price'),
+  numberOfAnalysts: integer('number_of_analysts'),
+  recommendationMean: real('recommendation_mean'),
+  // Ownership
+  insidersPercentHeld: real('insiders_percent_held'),
+  institutionsPercentHeld: real('institutions_percent_held'),
   // Data freshness tracking
   financialsLastSync: timestamp('financials_last_sync'),
   ratiosLastSync: timestamp('ratios_last_sync'),
+  yahooSyncedAt: timestamp('yahoo_synced_at'),
   // Metadata
   dataDate: date('data_date').notNull(),
   updatedAt: timestamp('updated_at').defaultNow(),
@@ -121,6 +159,11 @@ export const latestSnapshot = pgTable('latest_snapshot', {
   peRatioIdx: index('latest_snapshot_pe_idx').on(table.peRatio),
   divYieldIdx: index('latest_snapshot_div_yield_idx').on(table.dividendYield),
   grossMarginIdx: index('latest_snapshot_gross_margin_idx').on(table.grossMargin),
+  // New Yahoo data indexes
+  roeIdx: index('latest_snapshot_roe_idx').on(table.roe),
+  betaIdx: index('latest_snapshot_beta_idx').on(table.beta),
+  analystIdx: index('latest_snapshot_analyst_idx').on(table.recommendationMean),
+  shortIdx: index('latest_snapshot_short_idx').on(table.shortPercentOfFloat),
 }));
 
 // ============================================

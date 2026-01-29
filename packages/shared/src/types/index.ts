@@ -582,15 +582,59 @@ export interface StockIndicators {
     signal: number;
     histogram: number;
   };
-  // Fundamental fields
+  // Trading data (from Yahoo)
+  fiftyTwoWeekHigh?: number;
+  fiftyTwoWeekLow?: number;
+  fiftyDayAverage?: number;
+  twoHundredDayAverage?: number;
+  averageVolume?: number;
+  averageVolume10days?: number;
+  beta?: number;
+  // Valuation
   marketCap?: number;
   peRatio?: number;
+  forwardPE?: number;
   pbRatio?: number;
+  psRatio?: number;
+  pegRatio?: number;
+  evToEbitda?: number;
+  evToRevenue?: number;
+  // Earnings & EPS
+  trailingEps?: number;
+  forwardEps?: number;
   epsGrowthYoy?: number;
+  earningsGrowthQuarterly?: number;
+  // Revenue & Growth
   revenueGrowthYoy?: number;
-  dividendYield?: number;
+  revenueGrowthQuarterly?: number;
+  // Profitability
   grossMargin?: number;
+  operatingMargin?: number;
+  ebitdaMargin?: number;
+  netMargin?: number;
+  roe?: number;
+  roa?: number;
+  // Financial health
   debtToEquity?: number;
+  currentRatio?: number;
+  quickRatio?: number;
+  // Cash flow
+  freeCashFlow?: number;
+  operatingCashFlow?: number;
+  // Dividends
+  dividendYield?: number;
+  // Short interest
+  shortRatio?: number;
+  shortPercentOfFloat?: number;
+  // Analyst data
+  targetMeanPrice?: number;
+  targetHighPrice?: number;
+  targetLowPrice?: number;
+  numberOfAnalysts?: number;
+  recommendationMean?: number; // 1=Strong Buy to 5=Strong Sell
+  // Ownership
+  insidersPercentHeld?: number;
+  institutionsPercentHeld?: number;
   // Data freshness (for UI indicators)
   financialsLastSync?: string;
   ratiosLastSync?: string;
@@ -669,7 +713,9 @@ export type PresetCategory =
   | 'moving_averages'
   | 'price_volume'
   | 'momentum'
-  | 'fundamentals';
+  | 'fundamentals'
+  | 'analysts'
+  | 'quality';
 
 export interface PresetCategoryInfo {
   id: PresetCategory;
@@ -702,6 +748,16 @@ export const PRESET_CATEGORIES: PresetCategoryInfo[] = [
     id: 'fundamentals',
     name: 'Fundamentals',
     description: 'Screens based on valuation, growth, and financial health',
+  },
+  {
+    id: 'analysts',
+    name: 'Analyst Insights',
+    description: 'Screens based on analyst ratings, price targets, and coverage',
+  },
+  {
+    id: 'quality',
+    name: 'Quality & Income',
+    description: 'High-quality companies with strong profitability and dividends',
   },
 ];
 
@@ -969,6 +1025,193 @@ export const PRESET_FILTERS: Record<string, PresetFilterMeta> = {
       { field: 'volume', operator: 'gt', value: 300000 },
     ],
     sortBy: 'marketCap',
+    sortOrder: 'desc',
+  },
+  cheapPEG: {
+    name: 'Low PEG Ratio',
+    description: 'PEG ratio <1 suggesting undervalued growth',
+    category: 'fundamentals',
+    conditions: [
+      { field: 'pegRatio', operator: 'lt', value: 1 },
+      { field: 'pegRatio', operator: 'gt', value: 0 },
+      { field: 'marketCap', operator: 'gt', value: 500000000 },
+    ],
+    sortBy: 'pegRatio',
+    sortOrder: 'asc',
+  },
+  lowForwardPE: {
+    name: 'Low Forward P/E',
+    description: 'Forward P/E <12, cheap on expected earnings',
+    category: 'fundamentals',
+    conditions: [
+      { field: 'forwardPE', operator: 'lt', value: 12 },
+      { field: 'forwardPE', operator: 'gt', value: 0 },
+      { field: 'volume', operator: 'gt', value: 300000 },
+    ],
+    sortBy: 'forwardPE',
+    sortOrder: 'asc',
+  },
+
+  // Analyst Insights
+  strongBuy: {
+    name: 'Strong Buy Consensus',
+    description: 'Analyst consensus rating 1.0-1.5 (Strong Buy)',
+    category: 'analysts',
+    conditions: [
+      { field: 'recommendationMean', operator: 'lte', value: 1.5 },
+      { field: 'numberOfAnalysts', operator: 'gte', value: 5 },
+      { field: 'volume', operator: 'gt', value: 300000 },
+    ],
+    sortBy: 'recommendationMean',
+    sortOrder: 'asc',
+  },
+  highUpside: {
+    name: 'High Upside Potential',
+    description: 'Target price significantly above current price',
+    category: 'analysts',
+    conditions: [
+      { field: 'numberOfAnalysts', operator: 'gte', value: 3 },
+      { field: 'marketCap', operator: 'gt', value: 500000000 },
+    ],
+    sortBy: 'targetMeanPrice',
+    sortOrder: 'desc',
+  },
+  wellCovered: {
+    name: 'High Analyst Coverage',
+    description: 'Stocks with 10+ analysts covering',
+    category: 'analysts',
+    conditions: [
+      { field: 'numberOfAnalysts', operator: 'gte', value: 10 },
+      { field: 'volume', operator: 'gt', value: 500000 },
+    ],
+    sortBy: 'numberOfAnalysts',
+    sortOrder: 'desc',
+  },
+  undervalued: {
+    name: 'Undervalued by Analysts',
+    description: 'Trading below analyst mean target with buy rating',
+    category: 'analysts',
+    conditions: [
+      { field: 'recommendationMean', operator: 'lte', value: 2.5 },
+      { field: 'numberOfAnalysts', operator: 'gte', value: 3 },
+    ],
+    sortBy: 'recommendationMean',
+    sortOrder: 'asc',
+  },
+
+  // Quality & Income
+  highROE: {
+    name: 'High ROE',
+    description: 'Return on equity >20%, efficient capital use',
+    category: 'quality',
+    conditions: [
+      { field: 'roe', operator: 'gt', value: 20 },
+      { field: 'marketCap', operator: 'gt', value: 1000000000 },
+    ],
+    sortBy: 'roe',
+    sortOrder: 'desc',
+  },
+  profitableMachines: {
+    name: 'Profit Machines',
+    description: 'Net margin >20% and ROE >15%',
+    category: 'quality',
+    conditions: [
+      { field: 'netMargin', operator: 'gt', value: 20 },
+      { field: 'roe', operator: 'gt', value: 15 },
+      { field: 'volume', operator: 'gt', value: 200000 },
+    ],
+    sortBy: 'netMargin',
+    sortOrder: 'desc',
+  },
+  cashRich: {
+    name: 'Cash Flow Kings',
+    description: 'Strong free cash flow and operating margins',
+    category: 'quality',
+    conditions: [
+      { field: 'operatingMargin', operator: 'gt', value: 20 },
+      { field: 'marketCap', operator: 'gt', value: 500000000 },
+    ],
+    sortBy: 'operatingMargin',
+    sortOrder: 'desc',
+  },
+  dividendAristocrats: {
+    name: 'High Yield Quality',
+    description: 'Dividend yield >4% with low debt',
+    category: 'quality',
+    conditions: [
+      { field: 'dividendYield', operator: 'gt', value: 4 },
+      { field: 'debtToEquity', operator: 'lt', value: 1 },
+      { field: 'volume', operator: 'gt', value: 200000 },
+    ],
+    sortBy: 'dividendYield',
+    sortOrder: 'desc',
+  },
+  institutionalFavorites: {
+    name: 'Institutional Favorites',
+    description: 'High institutional ownership >70%',
+    category: 'quality',
+    conditions: [
+      { field: 'institutionsPercentHeld', operator: 'gt', value: 70 },
+      { field: 'marketCap', operator: 'gt', value: 1000000000 },
+    ],
+    sortBy: 'institutionsPercentHeld',
+    sortOrder: 'desc',
+  },
+  lowBeta: {
+    name: 'Low Volatility',
+    description: 'Beta <0.8, less volatile than market',
+    category: 'quality',
+    conditions: [
+      { field: 'beta', operator: 'lt', value: 0.8 },
+      { field: 'beta', operator: 'gt', value: 0 },
+      { field: 'marketCap', operator: 'gt', value: 1000000000 },
+    ],
+    sortBy: 'beta',
+    sortOrder: 'asc',
+  },
+  highBeta: {
+    name: 'High Beta Movers',
+    description: 'Beta >1.5, more volatile for active traders',
+    category: 'momentum',
+    conditions: [
+      { field: 'beta', operator: 'gt', value: 1.5 },
+      { field: 'volume', operator: 'gt', value: 500000 },
+    ],
+    sortBy: 'beta',
+    sortOrder: 'desc',
+  },
+  shortSqueeze: {
+    name: 'Short Squeeze Candidates',
+    description: 'High short interest with positive momentum',
+    category: 'momentum',
+    conditions: [
+      { field: 'shortPercentOfFloat', operator: 'gt', value: 10 },
+      { field: 'changePercent', operator: 'gt', value: 0 },
+      { field: 'volume', operator: 'gt', value: 500000 },
+    ],
+    sortBy: 'shortPercentOfFloat',
+    sortOrder: 'desc',
+  },
+  near52WeekLow: {
+    name: 'Near 52W Low',
+    description: 'Trading near 52-week low, potential bounce',
+    category: 'price_volume',
+    conditions: [
+      { field: 'volume', operator: 'gt', value: 500000 },
+      { field: 'marketCap', operator: 'gt', value: 500000000 },
+    ],
+    sortBy: 'changePercent',
+    sortOrder: 'asc',
+  },
+  near52WeekHigh: {
+    name: 'Near 52W High',
+    description: 'Trading near 52-week high, showing strength',
+    category: 'price_volume',
+    conditions: [
+      { field: 'volume', operator: 'gt', value: 500000 },
+      { field: 'changePercent', operator: 'gt', value: 0 },
+    ],
+    sortBy: 'changePercent',
     sortOrder: 'desc',
   },
 };

@@ -135,6 +135,10 @@ export interface YahooKeyStats {
   // Cash flow
   freeCashflow?: number;
   operatingCashflow?: number;
+  // Short interest
+  shortRatio?: number;
+  shortPercentOfFloat?: number;
+  sharesShort?: number;
   // Target prices
   targetHighPrice?: number;
   targetLowPrice?: number;
@@ -548,6 +552,11 @@ export class YahooClient {
         revenuePerShare: financials?.revenuePerShare,
         freeCashflow: financials?.freeCashflow,
         operatingCashflow: financials?.operatingCashflow,
+        // Short interest
+        shortRatio: stats?.shortRatio,
+        shortPercentOfFloat: stats?.shortPercentOfFloat,
+        sharesShort: stats?.sharesShort,
+        // Analyst targets
         targetHighPrice: financials?.targetHighPrice,
         targetLowPrice: financials?.targetLowPrice,
         targetMeanPrice: financials?.targetMeanPrice,
