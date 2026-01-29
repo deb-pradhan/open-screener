@@ -1,0 +1,443 @@
+import { redis, REDIS_KEYS, REDIS_TTL } from '../lib/redis';
+import { MassiveClient } from '../clients/massive';
+import type { 
+  ScreenerFilter, 
+  ScreenerResult, 
+  StockIndicators,
+  FilterCondition,
+  FilterOperator 
+} from '@screener/shared';
+
+// Fields that require indicator API calls
+const INDICATOR_FIELDS = ['rsi14', 'sma20', 'sma50', 'sma200', 'ema12', 'ema26', 'macd'] as const;
+// Fields available from snapshot
+const BASIC_FIELDS = ['price', 'volume', 'changePercent'] as const;
+
+export class ScreenerService {
+  private massiveClient: MassiveClient;
+  private snapshotCache: StockIndicators[] = [];
+  private lastFetchTime: number = 0;
+  private cacheTTL = 60000; // 1 minute in-memory cache
+  private indicatorCache: Map<string, Partial<StockIndicators>> = new Map();
+  private indicatorCacheTime: Map<string, number> = new Map();
+  private indicatorCacheTTL = 300000; // 5 minute indicator cache
+  private tickerDetailsCache: Map<string, { logo?: string; name?: string }> = new Map();
+
+  constructor() {
+    this.massiveClient = new MassiveClient();
+  }
+
+  // Run screener with given filter
+  async runScreener(
+    filter: ScreenerFilter,
+    page: number = 1,
+    pageSize: number = 50
+  ): Promise<ScreenerResult> {
+    // Try to get cached results first
+    const cacheKey = `${REDIS_KEYS.SCREENER_RESULTS}${filter.id}:${page}:${pageSize}`;
+    
+    try {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        return JSON.parse(cached);
+      }
+    } catch {
+      // Redis might not be connected, continue without cache
+    }
+
+    // Separate conditions into basic (snapshot) and indicator-based
+    const basicConditions = filter.conditions.filter(c => 
+      (BASIC_FIELDS as readonly string[]).includes(c.field)
+    );
+    const indicatorConditions = filter.conditions.filter(c => 
+      (INDICATOR_FIELDS as readonly string[]).includes(c.field)
+    );
+
+    // Get all stocks from snapshot
+    const allStocks = await this.getAllIndicators();
+    
+    // First pass: filter by basic conditions (price, volume, change)
+    let filtered = allStocks.filter((stock) => 
+      this.matchesFilter(stock, basicConditions)
+    );
+
+    console.log(`After basic filter: ${filtered.length} stocks (from ${allStocks.length})`);
+
+    // Check if this preset needs indicator data (either explicit conditions or special logic)
+    const needsIndicators = indicatorConditions.length > 0 || this.presetNeedsIndicators(filter.id);
+    
+    if (needsIndicators) {
+      // Sort by volume to prioritize liquid stocks, take top candidates
+      const maxCandidates = 500; // Limit API calls
+      filtered = this.sortStocks(filtered, 'volume', 'desc').slice(0, maxCandidates);
+      
+      console.log(`Fetching indicators for ${filtered.length} candidates...`);
+      
+      // Fetch indicators for candidates
+      filtered = await this.enrichStocksWithIndicators(filtered);
+      
+      // Second pass: filter by indicator conditions
+      if (indicatorConditions.length > 0) {
+        filtered = filtered.filter((stock) => 
+          this.matchesFilter(stock, indicatorConditions)
+        );
+      }
+      
+      // Apply special preset logic (price vs SMA comparisons, etc.)
+      filtered = this.applyPresetLogic(filter.id, filtered);
+      
+      console.log(`After indicator filter: ${filtered.length} stocks`);
+    }
+
+    // Final sort
+    const sortField = filter.sortBy || 'volume';
+    const sortOrder = filter.sortOrder || 'desc';
+    filtered = this.sortStocks(filtered, sortField, sortOrder);
+
+    const total = filtered.length;
+    const start = (page - 1) * pageSize;
+    let stocks = filtered.slice(start, start + pageSize);
+
+    // Ensure all page stocks have indicators and details
+    stocks = await this.enrichStocksWithIndicators(stocks);
+
+    const result: ScreenerResult = {
+      stocks,
+      total,
+      page,
+      pageSize,
+      filterId: filter.id,
+      timestamp: Date.now(),
+    };
+
+    // Cache results briefly
+    try {
+      await redis.setex(cacheKey, REDIS_TTL.SCREENER_RESULTS, JSON.stringify(result));
+    } catch {
+      // Ignore cache errors
+    }
+
+    return result;
+  }
+
+  // Check if indicator cache is still valid
+  private isIndicatorCacheValid(symbol: string): boolean {
+    const cacheTime = this.indicatorCacheTime.get(symbol);
+    if (!cacheTime) return false;
+    return Date.now() - cacheTime < this.indicatorCacheTTL;
+  }
+
+  // Enrich stocks with indicators and logos
+  private async enrichStocksWithIndicators(stocks: StockIndicators[]): Promise<StockIndicators[]> {
+    // Process in batches to avoid overwhelming the API
+    const batchSize = 20;
+    const enriched: StockIndicators[] = [];
+
+    for (let i = 0; i < stocks.length; i += batchSize) {
+      const batch = stocks.slice(i, i + batchSize);
+      
+      const batchResults = await Promise.all(
+        batch.map(async (stock) => {
+          // Check if stock already has indicators
+          if (stock.rsi14 !== undefined && stock.sma200 !== undefined) {
+            // Already enriched, just fetch details if needed
+            if (!stock.logo && !stock.name) {
+              const details = this.tickerDetailsCache.get(stock.symbol) ||
+                await this.massiveClient.getTickerDetails(stock.symbol).catch(() => null);
+              if (details) {
+                const logo = 'branding' in details ? details.branding?.logo_url : details.logo;
+                const name = details.name;
+                this.tickerDetailsCache.set(stock.symbol, { logo, name });
+                return { ...stock, logo, name: name || stock.symbol };
+              }
+            }
+            return stock;
+          }
+
+          // Check indicator cache
+          const cachedIndicators = this.indicatorCache.get(stock.symbol);
+          const cachedDetails = this.tickerDetailsCache.get(stock.symbol);
+          
+          if (cachedIndicators && this.isIndicatorCacheValid(stock.symbol)) {
+            return { 
+              ...stock, 
+              ...cachedIndicators, 
+              logo: cachedDetails?.logo, 
+              name: cachedDetails?.name || stock.symbol 
+            };
+          }
+
+          // Fetch fresh indicators and details in parallel
+          try {
+            const [rsi, sma20, sma50, sma200, ema12, ema26, details] = await Promise.all([
+              this.massiveClient.getRSI(stock.symbol, 14).catch(() => null),
+              this.massiveClient.getSMA(stock.symbol, 20).catch(() => null),
+              this.massiveClient.getSMA(stock.symbol, 50).catch(() => null),
+              this.massiveClient.getSMA(stock.symbol, 200).catch(() => null),
+              this.massiveClient.getEMA(stock.symbol, 12).catch(() => null),
+              this.massiveClient.getEMA(stock.symbol, 26).catch(() => null),
+              cachedDetails ? Promise.resolve(cachedDetails) : 
+                this.massiveClient.getTickerDetails(stock.symbol).catch(() => null),
+            ]);
+
+            const indicators: Partial<StockIndicators> = {
+              rsi14: rsi?.value,
+              sma20: sma20?.value,
+              sma50: sma50?.value,
+              sma200: sma200?.value,
+              ema12: ema12?.value,
+              ema26: ema26?.value,
+            };
+
+            // Cache the results
+            this.indicatorCache.set(stock.symbol, indicators);
+            this.indicatorCacheTime.set(stock.symbol, Date.now());
+            
+            let logo: string | undefined;
+            let name: string | undefined;
+            
+            if (details && 'branding' in details) {
+              logo = details.branding?.logo_url;
+              name = details.name;
+              this.tickerDetailsCache.set(stock.symbol, { logo, name });
+            } else if (details) {
+              logo = (details as { logo?: string }).logo;
+              name = (details as { name?: string }).name;
+            }
+
+            return {
+              ...stock,
+              ...indicators,
+              logo,
+              name: name || stock.symbol,
+            };
+          } catch (error) {
+            console.error(`Failed to fetch indicators for ${stock.symbol}:`, error);
+            return stock;
+          }
+        })
+      );
+
+      enriched.push(...batchResults);
+      
+      // Small delay between batches to respect rate limits
+      if (i + batchSize < stocks.length) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    }
+
+    return enriched;
+  }
+
+  // Get all indicators - from Redis, memory cache, or fresh fetch
+  private async getAllIndicators(): Promise<StockIndicators[]> {
+    // Try Redis first
+    const redisData = await this.getAllIndicatorsFromCache();
+    if (redisData.length > 0) {
+      return redisData;
+    }
+
+    // Try in-memory cache
+    if (this.snapshotCache.length > 0 && Date.now() - this.lastFetchTime < this.cacheTTL) {
+      return this.snapshotCache;
+    }
+
+    // Fetch fresh data from Massive API
+    console.log('Fetching fresh market snapshot from Massive API...');
+    try {
+      const snapshots = await this.massiveClient.getMarketSnapshot();
+      
+      if (!snapshots || snapshots.length === 0) {
+        console.log('No snapshot data received');
+        return this.snapshotCache; // Return stale cache if available
+      }
+
+      console.log(`Received ${snapshots.length} tickers from API`);
+
+      // Convert snapshots to indicators
+      // Use prevDay data if current day has no trading (pre-market, after-hours)
+      this.snapshotCache = snapshots
+        .filter(s => s.ticker && (s.day || s.prevDay))
+        .map(snapshot => {
+          const hasCurrentDay = snapshot.day && snapshot.day.v > 0;
+          const dayData = hasCurrentDay ? snapshot.day : snapshot.prevDay;
+          
+          return {
+            symbol: snapshot.ticker,
+            price: dayData?.c || snapshot.lastTrade?.p || snapshot.min?.c || 0,
+            volume: dayData?.v || 0,
+            changePercent: snapshot.todaysChangePerc || 0,
+            rsi14: undefined,
+            sma20: undefined,
+            sma50: undefined,
+            sma200: undefined,
+            ema12: undefined,
+            ema26: undefined,
+            macd: undefined,
+            updatedAt: Date.now(),
+          };
+        })
+        .filter(s => s.price > 0); // Only include stocks with a valid price
+
+      this.lastFetchTime = Date.now();
+      console.log(`Processed ${this.snapshotCache.length} valid tickers`);
+      
+      return this.snapshotCache;
+    } catch (error) {
+      console.error('Failed to fetch market snapshot:', error);
+      return this.snapshotCache; // Return stale cache if available
+    }
+  }
+
+  // Check if stock matches all filter conditions
+  private matchesFilter(stock: StockIndicators, conditions: FilterCondition[]): boolean {
+    return conditions.every((condition) => {
+      const value = stock[condition.field];
+      
+      if (value === undefined || value === null) {
+        return false;
+      }
+
+      return this.evaluateCondition(value as number, condition.operator, condition.value);
+    });
+  }
+
+  // Evaluate single condition
+  private evaluateCondition(
+    value: number,
+    operator: FilterOperator,
+    target: number | [number, number]
+  ): boolean {
+    switch (operator) {
+      case 'gt':
+        return value > (target as number);
+      case 'gte':
+        return value >= (target as number);
+      case 'lt':
+        return value < (target as number);
+      case 'lte':
+        return value <= (target as number);
+      case 'eq':
+        return value === (target as number);
+      case 'neq':
+        return value !== (target as number);
+      case 'between':
+        const [min, max] = target as [number, number];
+        return value >= min && value <= max;
+      default:
+        return false;
+    }
+  }
+
+  // Check if preset needs indicator data beyond explicit conditions
+  private presetNeedsIndicators(presetId: string): boolean {
+    const presetsNeedingIndicators = [
+      'goldenCross', 'deathCross', 'aboveSma200', 'belowSma200', 
+      'emaCrossover', 'macdBullish', 'uptrend', 'downtrend'
+    ];
+    return presetsNeedingIndicators.includes(presetId);
+  }
+
+  // Apply special logic for specific presets
+  private applyPresetLogic(presetId: string, stocks: StockIndicators[]): StockIndicators[] {
+    switch (presetId) {
+      case 'goldenCross':
+        // Price > SMA50 > SMA200 (bullish alignment)
+        return stocks.filter(s => 
+          s.sma50 !== undefined && s.sma200 !== undefined &&
+          s.price > s.sma50 && s.sma50 > s.sma200
+        );
+      
+      case 'deathCross':
+        // Price < SMA50 < SMA200 (bearish alignment)
+        return stocks.filter(s => 
+          s.sma50 !== undefined && s.sma200 !== undefined &&
+          s.price < s.sma50 && s.sma50 < s.sma200
+        );
+      
+      case 'aboveSma200':
+        // Price above 200-day moving average
+        return stocks.filter(s => 
+          s.sma200 !== undefined && s.price > s.sma200
+        );
+      
+      case 'belowSma200':
+        // Price below 200-day moving average
+        return stocks.filter(s => 
+          s.sma200 !== undefined && s.price < s.sma200
+        );
+      
+      case 'emaCrossover':
+        // EMA12 > EMA26 (short-term momentum bullish)
+        return stocks.filter(s => 
+          s.ema12 !== undefined && s.ema26 !== undefined &&
+          s.ema12 > s.ema26
+        );
+      
+      case 'macdBullish':
+        // MACD histogram positive (or price momentum positive)
+        return stocks.filter(s => 
+          (s.macd?.histogram !== undefined && s.macd.histogram > 0) ||
+          (s.changePercent > 0)
+        );
+      
+      case 'uptrend':
+        // Price above SMA50 and SMA200
+        return stocks.filter(s => 
+          s.sma50 !== undefined && s.sma200 !== undefined &&
+          s.price > s.sma50 && s.price > s.sma200
+        );
+      
+      case 'downtrend':
+        // Price below SMA50 and SMA200
+        return stocks.filter(s => 
+          s.sma50 !== undefined && s.sma200 !== undefined &&
+          s.price < s.sma50 && s.price < s.sma200
+        );
+      
+      default:
+        return stocks;
+    }
+  }
+
+  // Sort stocks by field
+  private sortStocks(
+    stocks: StockIndicators[],
+    sortBy: keyof StockIndicators,
+    sortOrder: 'asc' | 'desc'
+  ): StockIndicators[] {
+    return [...stocks].sort((a, b) => {
+      const aVal = a[sortBy];
+      const bVal = b[sortBy];
+
+      if (aVal === undefined || aVal === null) return 1;
+      if (bVal === undefined || bVal === null) return -1;
+
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+
+      return 0;
+    });
+  }
+
+  // Get all indicators from Redis cache
+  private async getAllIndicatorsFromCache(): Promise<StockIndicators[]> {
+    try {
+      const keys = await redis.keys(`${REDIS_KEYS.TICKER_INDICATORS}*`);
+      
+      if (keys.length === 0) {
+        return [];
+      }
+
+      const values = await redis.mget(keys);
+      
+      return values
+        .filter((v): v is string => v !== null)
+        .map((v) => JSON.parse(v) as StockIndicators);
+    } catch {
+      // Redis not connected, return empty
+      return [];
+    }
+  }
+}

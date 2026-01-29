@@ -1,0 +1,80 @@
+// Load environment variables FIRST before any other imports
+import './env';
+
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import { logger } from 'hono/logger';
+import { serveStatic } from 'hono/bun';
+import { tickersRouter } from './routes/tickers';
+import { screenerRouter } from './routes/screener';
+import { indicatorsRouter } from './routes/indicators';
+import { createWSHandler, type WSData } from './routes/websocket';
+
+const app = new Hono();
+const isProduction = process.env.NODE_ENV === 'production';
+
+// Middleware
+app.use('*', logger());
+
+// CORS - more permissive in production for the same origin
+app.use('*', cors({
+  origin: isProduction 
+    ? '*'  // Same origin in production, allow all for flexibility
+    : ['http://localhost:5173', 'http://localhost:3000'],
+  credentials: true,
+}));
+
+// Health check
+app.get('/health', (c) => {
+  return c.json({ 
+    status: 'ok', 
+    timestamp: Date.now(),
+    environment: process.env.NODE_ENV || 'development',
+  });
+});
+
+// API routes
+app.route('/api/tickers', tickersRouter);
+app.route('/api/screener', screenerRouter);
+app.route('/api/indicators', indicatorsRouter);
+
+// Serve static files in production
+if (isProduction) {
+  // Serve static assets
+  app.use('/assets/*', serveStatic({ root: './public' }));
+  
+  // Serve other static files (favicon, etc.)
+  app.use('/favicon.ico', serveStatic({ path: './public/favicon.ico' }));
+  app.use('/vite.svg', serveStatic({ path: './public/vite.svg' }));
+  
+  // SPA fallback - serve index.html for all non-API routes
+  app.get('*', serveStatic({ path: './public/index.html' }));
+}
+
+// Export for Bun server
+const port = Number(process.env.PORT) || 3001;
+
+console.log(`🚀 Server starting on port ${port} (${isProduction ? 'production' : 'development'})`);
+
+// Create the Bun server with WebSocket support
+const server = Bun.serve<WSData>({
+  port,
+  fetch(req, server) {
+    const url = new URL(req.url);
+    
+    // Handle WebSocket upgrade
+    if (url.pathname === '/ws') {
+      const upgraded = server.upgrade(req, {
+        data: { subscribedFilters: new Set<string>() },
+      });
+      if (upgraded) return undefined;
+      return new Response('WebSocket upgrade failed', { status: 400 });
+    }
+    
+    // Handle regular HTTP requests with Hono
+    return app.fetch(req);
+  },
+  websocket: createWSHandler(),
+});
+
+console.log(`Server running at http://localhost:${server.port}`);

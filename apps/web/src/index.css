@@ -1,0 +1,158 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Surface (Cool Greys) */
+    --surface-canvas: 228 8% 92%;
+    --surface-card: 0 0% 100%;
+    --surface-subtle: 220 14% 97%;
+
+    /* Ink (Cool Tones) */
+    --ink-primary: 222 22% 7%;
+    --ink-secondary: 220 8% 37%;
+    --ink-tertiary: 210 6% 63%;
+    --ink-on-accent: 0 0% 100%;
+
+    /* Accent (Violet) */
+    --color-accent-main: 250 41% 31%;
+    --color-accent-hover: 250 35% 40%;
+    --color-accent-subtle: 248 35% 94%;
+
+    /* Functional Signals */
+    --signal-error: 5 77% 41%;
+    --signal-warning: 44 100% 45%;
+    --signal-success: 160 100% 22%;
+
+    /* Borders */
+    --border-grid: 220 9% 79%;
+    --border-element: 220 11% 89%;
+    --border-accent: 250 41% 31%;
+
+    /* Map to shadcn-compatible tokens */
+    --background: var(--surface-canvas);
+    --foreground: var(--ink-primary);
+    --card: var(--surface-card);
+    --card-foreground: var(--ink-primary);
+    --popover: var(--surface-card);
+    --popover-foreground: var(--ink-primary);
+    --primary: var(--color-accent-main);
+    --primary-foreground: var(--ink-on-accent);
+    --secondary: var(--surface-subtle);
+    --secondary-foreground: var(--ink-secondary);
+    --muted: var(--surface-subtle);
+    --muted-foreground: var(--ink-tertiary);
+    --accent: var(--color-accent-subtle);
+    --accent-foreground: var(--color-accent-main);
+    --destructive: var(--signal-error);
+    --destructive-foreground: var(--ink-on-accent);
+    --border: var(--border-grid);
+    --input: var(--border-element);
+    --ring: var(--color-accent-main);
+    --radius: 0px;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  /* Tabular figures for all numbers in data contexts */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /* Grid cell with crosshair artifact */
+  .grid-cell {
+    @apply relative bg-card;
+    border: 1px solid hsl(var(--border-grid));
+  }
+
+  .grid-cell::after {
+    content: "+";
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    color: hsl(var(--color-accent-main));
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 500;
+    z-index: 10;
+    background: transparent;
+    line-height: 1;
+  }
+
+  /* Section label - uppercase micro text */
+  .section-label {
+    @apply text-[11px] font-medium uppercase tracking-[0.06em] text-ink-secondary;
+  }
+
+  /* Data value - monospace */
+  .data-value {
+    @apply font-mono text-[13px] tabular-nums;
+  }
+
+  /* Blueprint header */
+  .blueprint-header {
+    @apply flex items-center justify-between pb-4 border-b border-border-grid;
+  }
+
+  .blueprint-header h2 {
+    @apply text-base font-normal tracking-[-0.5%] text-ink-primary;
+  }
+}
+
+/* Custom scrollbar - minimal */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--surface-subtle));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border-grid));
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--ink-tertiary));
+}
+
+/* Positive/Negative colors for stock changes */
+.text-positive {
+  color: hsl(var(--signal-success));
+}
+
+.text-negative {
+  color: hsl(var(--signal-error));
+}
+
+.bg-positive {
+  background-color: hsl(160 100% 22% / 0.1);
+}
+
+.bg-negative {
+  background-color: hsl(5 77% 41% / 0.1);
+}
+
+/* Selection color */
+::selection {
+  background-color: hsl(var(--color-accent-subtle));
+  color: hsl(var(--color-accent-main));
+}

@@ -1,0 +1,47 @@
+# Dependencies
+node_modules
+**/node_modules
+
+# Build outputs (we build in Docker)
+dist
+**/dist
+build
+**/build
+
+# Git
+.git
+.gitignore
+
+# Environment files (use Railway env vars)
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Testing
+coverage
+
+# Docs
+*.md
+!README.md
+
+# Cursor
+.cursor
+
+# Misc
+*.tsbuildinfo
+.turbo
